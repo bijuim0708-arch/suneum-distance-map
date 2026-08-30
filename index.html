@@ -253,6 +253,62 @@ h1 {
   font-weight: 750;
 }
 
+.geocode-panel {
+  display: grid;
+  gap: 7px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 16px rgba(20, 32, 54, 0.08);
+}
+
+.geocode-key-row,
+.geocode-actions {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 7px;
+}
+
+.geocode-key-row input {
+  min-width: 0;
+  min-height: 40px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.geocode-key-row button,
+.geocode-actions button {
+  min-height: 40px;
+  border-radius: 8px;
+  padding: 0 11px;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.geocode-key-row button {
+  color: #ffffff;
+  background: #334155;
+}
+
+.geocode-actions button:first-child {
+  color: #ffffff;
+  background: #d97706;
+}
+
+.geocode-actions button:last-child {
+  color: #123c7c;
+  background: #e8efff;
+}
+
+.geocode-status {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .stats-panel {
   display: flex;
   flex-wrap: wrap;
@@ -579,6 +635,18 @@ h1 {
           </select>
         </div>
 
+        <div class="geocode-panel" aria-label="주소 좌표 변환">
+          <div class="geocode-key-row">
+            <input id="kakaoKeyInput" type="password" placeholder="Kakao JavaScript 키 입력" autocomplete="off" />
+            <button id="saveKakaoKeyButton" type="button">키 저장</button>
+          </div>
+          <div class="geocode-actions">
+            <button id="geocodeButton" type="button">주소 좌표 변환</button>
+            <button id="downloadCsvButton" type="button">좌표 CSV 저장</button>
+          </div>
+          <div id="geocodeStatus" class="geocode-status">위도·경도 없는 자료는 Kakao 키 입력 후 좌표 변환을 실행하세요.</div>
+        </div>
+
         <div id="statsPanel" class="stats-panel" aria-live="polite">
           <span>Excel을 불러오면 투표소 현황이 표시됩니다.</span>
         </div>
@@ -823,16 +891,27 @@ h1 {
 (function () {
   window.Suneum = window.Suneum || {};
 
-  var REQUIRED_HEADERS = ["구분", "투표소명", "주소", "위도", "경도"];
-  var OPTIONAL_HEADERS = ["건물명", "비고"];
+  var REQUIRED_HEADERS = ["투표소명", "주소"];
+  var OPTIONAL_HEADERS = ["구분", "건물명", "위도", "경도", "비고"];
+  var HEADER_ALIASES = {
+    "구분": ["구분", "투표소구분", "선거구분"],
+    "투표소명": ["투표소명", "사전투표소명", "명칭"],
+    "건물명": ["건물명", "건물명(층)", "투표소건물명", "소재건물명", "설치장소(건물명)", "설치장소"],
+    "주소": ["주소", "투표소주소", "투표소 주소", "소재지", "투표소소재지"],
+    "위도": ["위도", "lat", "latitude", "y"],
+    "경도": ["경도", "lng", "lon", "longitude", "x"],
+    "비고": ["비고", "장애인편의시설", "장애인 편의시설", "편의시설"]
+  };
 
   function normalizeHeader(value) {
     return String(value || "").replace(/\s+/g, "").trim();
   }
 
-  function readCell(row, aliases) {
+  function readCell(row, canonicalHeader, headerMap) {
+    var aliases = HEADER_ALIASES[canonicalHeader] || [canonicalHeader];
     for (var i = 0; i < aliases.length; i += 1) {
-      if (Object.prototype.hasOwnProperty.call(row, aliases[i])) return row[aliases[i]];
+      var key = headerMap[normalizeHeader(aliases[i])];
+      if (key && Object.prototype.hasOwnProperty.call(row, key)) return row[key];
     }
     return "";
   }
@@ -858,14 +937,91 @@ h1 {
     return map;
   }
 
-  function validateRows(rawRows) {
+  function findHeaderRow(aoa) {
+    for (var r = 0; r < aoa.length; r += 1) {
+      var normalized = (aoa[r] || []).map(normalizeHeader);
+      var hasName = HEADER_ALIASES["투표소명"].some(function (alias) {
+        return normalized.indexOf(normalizeHeader(alias)) !== -1;
+      });
+      var hasAddress = HEADER_ALIASES["주소"].some(function (alias) {
+        return normalized.indexOf(normalizeHeader(alias)) !== -1;
+      });
+      if (hasName && hasAddress) return r;
+    }
+    return -1;
+  }
+
+  function rowsFromAoa(aoa) {
+    var headerIndex = findHeaderRow(aoa);
+    if (headerIndex === -1) {
+      return {
+        rows: [],
+        startingRowNumber: 1,
+        preliminaryErrors: [{ rowNumber: 1, message: "투표소명과 주소 열을 찾지 못했습니다." }]
+      };
+    }
+
+    var headers = aoa[headerIndex].map(function (value, index) {
+      return String(value || "빈열" + (index + 1)).trim();
+    });
+    var rows = aoa.slice(headerIndex + 1)
+      .filter(function (row) {
+        return row && row.some(function (cell) { return String(cell || "").trim() !== ""; });
+      })
+      .map(function (row) {
+        var object = {};
+        headers.forEach(function (header, index) {
+          object[header] = row[index] === undefined ? "" : row[index];
+        });
+        return object;
+      });
+
+    return {
+      rows: rows,
+      startingRowNumber: headerIndex + 2,
+      preliminaryErrors: []
+    };
+  }
+
+  function inferDefaultType(fileName, options) {
+    if (options && options.defaultType) return options.defaultType;
+    var text = String(fileName || "").toLowerCase();
+    if (text.indexOf("사전") !== -1) return "early";
+    if (text.indexOf("선거일") !== -1 || text.indexOf("투표소") !== -1) return "election";
+    return "";
+  }
+
+  function forceWorksheetRef(sheet) {
+    var refs = Object.keys(sheet || {}).filter(function (key) {
+      return /^[A-Z]+[0-9]+$/.test(key);
+    });
+    if (!refs.length || !window.XLSX) return;
+
+    var decoded = refs.map(window.XLSX.utils.decode_cell);
+    var minRow = Math.min.apply(null, decoded.map(function (cell) { return cell.r; }));
+    var maxRow = Math.max.apply(null, decoded.map(function (cell) { return cell.r; }));
+    var minCol = Math.min.apply(null, decoded.map(function (cell) { return cell.c; }));
+    var maxCol = Math.max.apply(null, decoded.map(function (cell) { return cell.c; }));
+    sheet["!ref"] = window.XLSX.utils.encode_range({
+      s: { r: minRow, c: minCol },
+      e: { r: maxRow, c: maxCol }
+    });
+  }
+
+  function validateRows(rawRows, options) {
     var errors = [];
     var places = [];
     var seen = {};
     var headerMap = getHeaderMap(rawRows[0] || {});
+    var defaultType = inferDefaultType(options && options.fileName, options);
+    var startRow = (options && options.startingRowNumber) || 2;
 
     REQUIRED_HEADERS.forEach(function (header) {
-      if (!headerMap[header]) {
+      var aliases = HEADER_ALIASES[header] || [header];
+      var found = aliases.some(function (alias) {
+        return Boolean(headerMap[normalizeHeader(alias)]);
+      });
+      if (!found) {
         errors.push({
           rowNumber: 1,
           message: "필수 열 없음: " + header
@@ -878,11 +1034,10 @@ h1 {
     }
 
     rawRows.forEach(function (row, index) {
-      var rowNumber = index + 2;
+      var rowNumber = startRow + index;
       var normalized = {};
       REQUIRED_HEADERS.concat(OPTIONAL_HEADERS).forEach(function (header) {
-        var actualKey = headerMap[header];
-        normalized[header] = actualKey ? readCell(row, [actualKey]) : "";
+        normalized[header] = readCell(row, header, headerMap);
       });
 
       var name = String(normalized["투표소명"] || "").trim();
@@ -890,6 +1045,8 @@ h1 {
       var building = String(normalized["건물명"] || "").trim();
       var note = String(normalized["비고"] || "").trim();
       var rawType = String(normalized["구분"] || "").trim();
+      if (!rawType && defaultType === "early") rawType = "사전투표소";
+      if (!rawType && defaultType === "election") rawType = "투표소";
       var type = normalizeType(rawType);
       var latRaw = normalized["위도"];
       var lngRaw = normalized["경도"];
@@ -898,13 +1055,14 @@ h1 {
       var lat = Number(latRaw);
       var lng = Number(lngRaw);
       var rowErrors = [];
+      var coordinateWarnings = [];
 
       if (!rawType) rowErrors.push("구분 값이 없습니다.");
       if (type === "unknown") rowErrors.push("구분은 사전투표소 또는 투표소로 입력하세요.");
       if (!name) rowErrors.push("투표소명이 없습니다.");
       if (!address) rowErrors.push("주소가 없습니다.");
-      if (latMissing) rowErrors.push("위도 값이 없습니다.");
-      if (lngMissing) rowErrors.push("경도 값이 없습니다.");
+      if (latMissing) coordinateWarnings.push("위도 값이 없습니다. 주소 좌표 변환 또는 위도 입력이 필요합니다.");
+      if (lngMissing) coordinateWarnings.push("경도 값이 없습니다. 주소 좌표 변환 또는 경도 입력이 필요합니다.");
       if (!latMissing && !window.Suneum.distance.isValidLatitude(lat)) rowErrors.push("위도 형식 오류입니다.");
       if (!lngMissing && !window.Suneum.distance.isValidLongitude(lng)) rowErrors.push("경도 형식 오류입니다.");
 
@@ -937,6 +1095,9 @@ h1 {
         lng: lngValid ? lng : null,
         note: note,
         hasValidCoordinates: latValid && lngValid,
+        coordinateSource: latValid && lngValid ? "excel" : "",
+        coordinateWarnings: coordinateWarnings,
+        geocodeStatus: latValid && lngValid ? "좌표 있음" : "좌표 변환 필요",
         searchText: [rawType, name, building, address, note].join(" ").toLowerCase(),
         rowErrors: rowErrors
       });
@@ -983,12 +1144,21 @@ h1 {
             return;
           }
           var sheet = workbook.Sheets[firstSheetName];
-          var rows = window.XLSX.utils.sheet_to_json(sheet, { defval: "" });
-          if (!rows.length) {
+          forceWorksheetRef(sheet);
+          var aoa = window.XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
+          var table = rowsFromAoa(aoa);
+          if (table.preliminaryErrors.length) {
+            resolve(buildResult([], table.preliminaryErrors));
+            return;
+          }
+          if (!table.rows.length) {
             resolve(buildResult([], [{ rowNumber: 1, message: "빈 Excel 파일입니다." }]));
             return;
           }
-          resolve(validateRows(rows));
+          resolve(validateRows(table.rows, {
+            fileName: file.name,
+            startingRowNumber: table.startingRowNumber
+          }));
         } catch (error) {
           reject(error);
         }
@@ -1000,15 +1170,171 @@ h1 {
     });
   }
 
-  function parseRows(rows) {
-    return validateRows(rows);
+  function parseRows(rows, options) {
+    return validateRows(rows, options || {});
   }
 
   window.Suneum.excel = {
     requiredHeaders: REQUIRED_HEADERS,
     parseWorkbook: parseWorkbook,
     parseRows: parseRows,
+    rowsFromAoa: rowsFromAoa,
     validateRows: validateRows
+  };
+})();
+
+
+(function () {
+  window.Suneum = window.Suneum || {};
+
+  var loadedKey = "";
+  var loadingPromise = null;
+
+  function loadKakaoSdk(appKey) {
+    var key = String(appKey || "").trim();
+    if (!key) {
+      return Promise.reject(new Error("Kakao JavaScript 키를 입력하세요."));
+    }
+
+    if (window.kakao && window.kakao.maps && window.kakao.maps.services && loadedKey === key) {
+      return Promise.resolve();
+    }
+
+    if (loadingPromise && loadedKey === key) {
+      return loadingPromise;
+    }
+
+    loadedKey = key;
+    loadingPromise = new Promise(function (resolve, reject) {
+      var existing = document.getElementById("kakaoMapsSdk");
+      if (existing) existing.remove();
+
+      var script = document.createElement("script");
+      script.id = "kakaoMapsSdk";
+      script.src =
+        "https://dapi.kakao.com/v2/maps/sdk.js?appkey=" +
+        encodeURIComponent(key) +
+        "&autoload=false&libraries=services";
+      script.async = true;
+      script.onload = function () {
+        if (!window.kakao || !window.kakao.maps) {
+          reject(new Error("Kakao 지도 SDK를 불러오지 못했습니다. JavaScript 키와 등록 도메인을 확인하세요."));
+          return;
+        }
+        window.kakao.maps.load(function () {
+          if (!window.kakao.maps.services) {
+            reject(new Error("Kakao 주소검색 서비스를 사용할 수 없습니다. libraries=services 설정을 확인하세요."));
+            return;
+          }
+          resolve();
+        });
+      };
+      script.onerror = function () {
+        reject(new Error("Kakao 지도 SDK 연결에 실패했습니다. 인터넷 연결, JavaScript 키, 도메인 등록을 확인하세요."));
+      };
+      document.head.appendChild(script);
+    });
+
+    return loadingPromise;
+  }
+
+  function simplifyAddress(address) {
+    return String(address || "")
+      .replace(/\s+/g, " ")
+      .replace(/\([^)]*\)\s*$/g, "")
+      .trim();
+  }
+
+  function geocodeAddress(address) {
+    return new Promise(function (resolve) {
+      if (!window.kakao || !window.kakao.maps || !window.kakao.maps.services) {
+        resolve({ ok: false, message: "Kakao 주소검색 서비스가 준비되지 않았습니다." });
+        return;
+      }
+
+      var geocoder = new window.kakao.maps.services.Geocoder();
+      var queries = [String(address || "").trim(), simplifyAddress(address)]
+        .filter(function (value, index, array) {
+          return value && array.indexOf(value) === index;
+        });
+
+      function tryNext(index) {
+        if (index >= queries.length) {
+          resolve({ ok: false, message: "주소 검색 결과 없음" });
+          return;
+        }
+
+        geocoder.addressSearch(queries[index], function (result, status) {
+          if (status === window.kakao.maps.services.Status.OK && result && result.length) {
+            resolve({
+              ok: true,
+              lat: Number(result[0].y),
+              lng: Number(result[0].x),
+              addressName: result[0].address_name || queries[index],
+              query: queries[index]
+            });
+            return;
+          }
+          tryNext(index + 1);
+        });
+      }
+
+      tryNext(0);
+    });
+  }
+
+  function geocodePlaces(places, appKey, onProgress) {
+    return loadKakaoSdk(appKey).then(async function () {
+      var targets = places.filter(function (place) {
+        return !place.hasValidCoordinates && place.address;
+      });
+      var success = 0;
+      var failed = 0;
+
+      for (var i = 0; i < targets.length; i += 1) {
+        var place = targets[i];
+        if (onProgress) onProgress({ done: i, total: targets.length, success: success, failed: failed, place: place });
+
+        var result = await geocodeAddress(place.address);
+        if (result.ok && Number.isFinite(result.lat) && Number.isFinite(result.lng)) {
+          place.lat = result.lat;
+          place.lng = result.lng;
+          place.hasValidCoordinates = true;
+          place.coordinateSource = "kakao";
+          place.geocodeStatus = "Kakao 변환 완료";
+          place.geocodedAddress = result.addressName;
+          place.coordinateWarnings = [];
+          success += 1;
+        } else {
+          place.geocodeStatus = result.message || "좌표 변환 실패";
+          failed += 1;
+        }
+
+        await wait(180);
+      }
+
+      if (onProgress) {
+        onProgress({ done: targets.length, total: targets.length, success: success, failed: failed, place: null });
+      }
+
+      return {
+        total: targets.length,
+        success: success,
+        failed: failed
+      };
+    });
+  }
+
+  function wait(ms) {
+    return new Promise(function (resolve) {
+      window.setTimeout(resolve, ms);
+    });
+  }
+
+  window.Suneum.geocode = {
+    loadKakaoSdk: loadKakaoSdk,
+    geocodeAddress: geocodeAddress,
+    geocodePlaces: geocodePlaces
   };
 })();
 
@@ -1285,6 +1611,12 @@ h1 {
     byId("mapStyleSelect").addEventListener("change", function (event) {
       window.Suneum.map.setMapStyle(event.target.value);
     });
+    byId("saveKakaoKeyButton").addEventListener("click", saveKakaoKey);
+    byId("geocodeButton").addEventListener("click", geocodeMissingCoordinates);
+    byId("downloadCsvButton").addEventListener("click", downloadCoordinateCsv);
+
+    var savedKey = localStorage.getItem("suneumKakaoJsKey") || "";
+    byId("kakaoKeyInput").value = savedKey;
     byId("closeSheetButton").addEventListener("click", hideBottomSheet);
     byId("closeNearestButton").addEventListener("click", hideNearestSheet);
     byId("focusSelectedButton").addEventListener("click", function () {
@@ -1336,10 +1668,14 @@ h1 {
     renderStats(result.stats, fileName);
     window.Suneum.map.setPlaces(state.places, state.filter);
 
+    var missingCoordinates = result.stats.missing;
     if (result.errors.length) {
       showErrors(result.errors.slice(0, 10));
-    } else if (!result.stats.valid) {
-      window.Suneum.map.showMapNotice("정상 좌표가 없습니다. Excel의 위도·경도 값을 확인하세요.");
+    } else if (missingCoordinates) {
+      setGeocodeStatus("좌표 변환 필요 " + missingCoordinates + "건. Kakao 키 입력 후 주소 좌표 변환을 실행하세요.");
+      if (!result.stats.valid) {
+        window.Suneum.map.showMapNotice("정상 좌표가 없습니다. 주소 좌표 변환을 실행하면 지도 마커가 생성됩니다.");
+      }
     }
   }
 
@@ -1356,9 +1692,20 @@ h1 {
       '<span class="stat-chip">사전 ' + stats.early + "개</span>",
       '<span class="stat-chip">선거일 ' + stats.election + "개</span>",
       '<span class="stat-chip">정상 ' + stats.valid + "개</span>",
-      '<span class="stat-chip warning">좌표 확인 ' + stats.missing + "개</span>",
+      '<span class="stat-chip warning">좌표 변환 ' + stats.missing + "개</span>",
       '<span class="stat-chip error">오류 ' + stats.errorCount + "건</span>"
     ].join("");
+  }
+
+  function recomputeStats() {
+    return {
+      total: state.places.length,
+      early: state.places.filter(function (place) { return place.type === "early"; }).length,
+      election: state.places.filter(function (place) { return place.type === "election"; }).length,
+      valid: state.places.filter(function (place) { return place.hasValidCoordinates; }).length,
+      missing: state.places.filter(function (place) { return !place.hasValidCoordinates; }).length,
+      errorCount: state.places.reduce(function (sum, place) { return sum + (place.rowErrors || []).length; }, 0)
+    };
   }
 
   function showErrors(errors) {
@@ -1486,6 +1833,122 @@ h1 {
         maximumAge: 15000
       }
     );
+  }
+
+  function saveKakaoKey() {
+    var key = byId("kakaoKeyInput").value.trim();
+    if (!key) {
+      setGeocodeStatus("저장할 Kakao JavaScript 키를 입력하세요.");
+      return;
+    }
+    localStorage.setItem("suneumKakaoJsKey", key);
+    setGeocodeStatus("Kakao JavaScript 키를 이 브라우저에 저장했습니다. GitHub Pages 도메인 등록도 필요합니다.");
+  }
+
+  function geocodeMissingCoordinates() {
+    if (!state.places.length) {
+      setGeocodeStatus("먼저 투표소 Excel을 불러오세요.");
+      return;
+    }
+
+    var key = byId("kakaoKeyInput").value.trim();
+    if (!key) {
+      setGeocodeStatus("Kakao JavaScript 키를 입력하세요. Kakao Developers에서 JavaScript 키를 발급받아 사용합니다.");
+      return;
+    }
+    localStorage.setItem("suneumKakaoJsKey", key);
+
+    var targets = state.places.filter(function (place) {
+      return !place.hasValidCoordinates && place.address;
+    });
+    if (!targets.length) {
+      setGeocodeStatus("좌표 변환이 필요한 투표소가 없습니다.");
+      return;
+    }
+
+    byId("geocodeButton").disabled = true;
+    setGeocodeStatus("주소 좌표 변환 준비 중입니다. 총 " + targets.length + "건");
+
+    window.Suneum.geocode.geocodePlaces(state.places, key, function (progress) {
+      setGeocodeStatus(
+        "좌표 변환 중 " +
+        progress.done +
+        "/" +
+        progress.total +
+        " · 성공 " +
+        progress.success +
+        " · 실패 " +
+        progress.failed +
+        (progress.place ? " · " + progress.place.name : "")
+      );
+    })
+      .then(function (summary) {
+        var stats = recomputeStats();
+        renderStats(stats, "현재 불러온 자료");
+        window.Suneum.map.setPlaces(state.places, state.filter);
+        setGeocodeStatus(
+          "좌표 변환 완료: 대상 " +
+          summary.total +
+          "건 · 성공 " +
+          summary.success +
+          "건 · 실패 " +
+          summary.failed +
+          "건. 실패 건은 주소를 확인하거나 좌표를 수동 보완하세요."
+        );
+      })
+      .catch(function (error) {
+        setGeocodeStatus(error.message || "주소 좌표 변환 중 오류가 발생했습니다.");
+        window.Suneum.map.showMapNotice(error.message || "주소 좌표 변환 중 오류가 발생했습니다.");
+      })
+      .finally(function () {
+        byId("geocodeButton").disabled = false;
+      });
+  }
+
+  function setGeocodeStatus(message) {
+    byId("geocodeStatus").textContent = message;
+  }
+
+  function downloadCoordinateCsv() {
+    if (!state.places.length) {
+      setGeocodeStatus("저장할 투표소 자료가 없습니다.");
+      return;
+    }
+
+    var headers = ["구분", "투표소명", "건물명", "주소", "위도", "경도", "비고", "좌표상태", "좌표출처"];
+    var rows = state.places.map(function (place) {
+      return [
+        place.typeLabel,
+        place.name,
+        place.building,
+        place.address,
+        place.lat == null ? "" : place.lat,
+        place.lng == null ? "" : place.lng,
+        place.note,
+        place.geocodeStatus || (place.hasValidCoordinates ? "좌표 있음" : "좌표 변환 필요"),
+        place.coordinateSource || ""
+      ];
+    });
+
+    var csv = "\ufeff" + [headers].concat(rows).map(function (row) {
+      return row.map(csvCell).join(",");
+    }).join("\n");
+    var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    var date = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = "suneum_distance_map_coordinates_" + date + ".csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setGeocodeStatus("좌표 포함 CSV를 저장했습니다. 다음부터 이 CSV를 불러오면 변환 없이 마커를 표시할 수 있습니다.");
+  }
+
+  function csvCell(value) {
+    var text = String(value == null ? "" : value);
+    return '"' + text.replace(/"/g, '""') + '"';
   }
 
   function enableManualLocation() {
