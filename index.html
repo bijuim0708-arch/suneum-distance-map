@@ -223,6 +223,36 @@ h1 {
   border-color: var(--blue-dark);
 }
 
+.map-style-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid var(--line);
+  box-shadow: 0 4px 16px rgba(20, 32, 54, 0.08);
+}
+
+.map-style-row label {
+  color: #22304a;
+  font-size: 14px;
+  font-weight: 850;
+}
+
+.map-style-row select {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 10px;
+  color: #172033;
+  background: #ffffff;
+  font-size: 15px;
+  font-weight: 750;
+}
+
 .stats-panel {
   display: flex;
   flex-wrap: wrap;
@@ -540,6 +570,15 @@ h1 {
           <button class="filter-tab" type="button" data-filter="election">선거일</button>
         </div>
 
+        <div class="map-style-row" aria-label="지도 스타일 선택">
+          <label for="mapStyleSelect">지도</label>
+          <select id="mapStyleSelect">
+            <option value="gray">단속용 밝은 지도</option>
+            <option value="street">도로 중심 지도</option>
+            <option value="osm">기본 OSM 지도</option>
+          </select>
+        </div>
+
         <div id="statsPanel" class="stats-panel" aria-live="polite">
           <span>Excel을 불러오면 투표소 현황이 표시됩니다.</span>
         </div>
@@ -614,8 +653,24 @@ h1 {
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
-    tileLayerUrl: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-    tileAttribution: "&copy; OpenStreetMap contributors",
+    defaultMapStyle: "gray",
+    mapStyles: {
+      gray: {
+        label: "단속용 밝은 지도",
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}",
+        attribution: "Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ"
+      },
+      street: {
+        label: "도로 중심 지도",
+        url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}",
+        attribution: "Tiles &copy; Esri"
+      },
+      osm: {
+        label: "기본 OSM 지도",
+        url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        attribution: "&copy; OpenStreetMap contributors"
+      }
+    },
     tileErrorMessage:
       "지도 타일을 불러오지 못했습니다. 인터넷 연결을 확인하세요. Excel 검사와 거리 계산 기능은 계속 사용할 수 있습니다.",
     boundaryWarningBufferMeters: 5,
@@ -963,6 +1018,7 @@ h1 {
 
   var map;
   var markerLayer;
+  var activeTileLayer;
   var selectedMarker;
   var circle50;
   var circle100;
@@ -986,16 +1042,29 @@ h1 {
     window.L.control.zoom({ position: "bottomright" }).addTo(map);
     markerLayer = window.L.layerGroup().addTo(map);
 
-    var tileLayer = window.L.tileLayer(window.Suneum.config.tileLayerUrl, {
+    setMapStyle(window.Suneum.config.defaultMapStyle || "gray");
+    return true;
+  }
+
+  function setMapStyle(styleKey) {
+    if (!map) return;
+    var styles = window.Suneum.config.mapStyles || {};
+    var style = styles[styleKey] || styles.gray || styles.osm;
+    if (!style) return;
+
+    if (activeTileLayer) {
+      activeTileLayer.remove();
+    }
+
+    activeTileLayer = window.L.tileLayer(style.url, {
       maxZoom: 20,
-      attribution: window.Suneum.config.tileAttribution
+      attribution: style.attribution
     });
 
-    tileLayer.on("tileerror", function () {
+    activeTileLayer.on("tileerror", function () {
       showMapNotice(window.Suneum.config.tileErrorMessage);
     });
-    tileLayer.addTo(map);
-    return true;
+    activeTileLayer.addTo(map);
   }
 
   function showMapNotice(message) {
@@ -1166,6 +1235,7 @@ h1 {
     isReady: isReady,
     setPlaces: setPlaces,
     setFilter: setFilter,
+    setMapStyle: setMapStyle,
     focusPlace: focusPlace,
     showRadius: showRadius,
     clearCircles: clearCircles,
@@ -1212,6 +1282,9 @@ h1 {
     byId("locateButton").addEventListener("click", locateUser);
     byId("manualLocationButton").addEventListener("click", enableManualLocation);
     byId("nearestButton").addEventListener("click", showNearest);
+    byId("mapStyleSelect").addEventListener("change", function (event) {
+      window.Suneum.map.setMapStyle(event.target.value);
+    });
     byId("closeSheetButton").addEventListener("click", hideBottomSheet);
     byId("closeNearestButton").addEventListener("click", hideNearestSheet);
     byId("focusSelectedButton").addEventListener("click", function () {
