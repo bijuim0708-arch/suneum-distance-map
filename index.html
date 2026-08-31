@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-거리맵 v0.3 현장용 단일 실행판</title>
+    <title>선이음-거리맵 v0.4.1 대구 내장판</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -680,7 +680,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-거리맵",
-    version: "0.3-field",
+    version: "0.4.1-embedded-daegu",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
@@ -693,12 +693,12 @@ h1 {
       }
     },
     tileErrorMessage:
-      "지도 타일을 불러오지 못했습니다. 인터넷 연결을 확인하세요. Excel 검사와 거리 계산 기능은 계속 사용할 수 있습니다.",
+      "지도 타일을 불러오지 못했습니다. 인터넷 연결을 확인하세요. 검색과 거리 계산 기능은 계속 사용할 수 있습니다.",
     boundaryWarningBufferMeters: 5,
     geocode: {
       enabled: false,
       provider: "none",
-      note: "현장용은 위도·경도 입력 Excel 방식입니다. 주소만 있는 행은 좌표 확인 필요로 표시합니다."
+      note: "현장용은 대구 선거일 투표소 좌표 내장 방식입니다."
     },
     lawInfoSlots: [
       { radius: 50, title: "50m 관련 법률정보", status: "향후 연결 예정" },
@@ -1434,12 +1434,12 @@ h1 {
     if (result.errors.length) {
       showErrors(result.errors.slice(0, 10));
     } else if (missingCoordinates) {
-      setFieldGuideStatus("좌표가 없는 투표소 " + missingCoordinates + "건이 있습니다. 관리자용 좌표변환기에서 먼저 변환한 Excel을 사용하세요.");
+      setFieldGuideStatus("좌표가 없는 투표소 " + missingCoordinates + "건이 있습니다. 배포 전 좌표자료를 다시 확인하세요.");
       if (!result.stats.valid) {
-        window.Suneum.map.showMapNotice("정상 좌표가 없습니다. 관리자용 좌표변환기에서 위도·경도를 추가한 Excel을 불러오세요.");
+        window.Suneum.map.showMapNotice("정상 좌표가 없습니다. 배포 파일의 내장 좌표자료를 확인하세요.");
       }
     } else {
-      setFieldGuideStatus("좌표 포함 Excel이 정상적으로 불러와졌습니다. 투표소 검색, 내 위치, 가까운 투표소 기능을 사용할 수 있습니다.");
+      setFieldGuideStatus("대구 선거일 투표소 좌표자료가 정상적으로 불러와졌습니다. 투표소 검색, 내 위치, 가까운 투표소 기능을 사용할 수 있습니다.");
     }
   }
 
@@ -1626,7 +1626,7 @@ h1 {
     alert.classList.add("hidden");
 
     if (!state.selectedPlace || !state.selectedPlace.hasValidCoordinates) {
-      line.textContent = "좌표 확인 필요: Excel의 위도·경도를 확인하세요.";
+      line.textContent = "좌표 확인 필요: 배포 파일의 내장 좌표자료를 확인하세요.";
       return;
     }
 
@@ -1690,7 +1690,7 @@ h1 {
 
     var list = byId("nearestList");
     if (!nearest.length) {
-      list.innerHTML = '<div class="nearest-item"><span class="nearest-name">표시 가능한 투표소 없음</span><span class="nearest-meta">Excel 좌표를 확인하세요.</span></div>';
+      list.innerHTML = '<div class="nearest-item"><span class="nearest-name">표시 가능한 투표소 없음</span><span class="nearest-meta">내장 좌표자료를 확인하세요.</span></div>';
     } else {
       list.innerHTML = nearest.map(function (item, index) {
         return (
