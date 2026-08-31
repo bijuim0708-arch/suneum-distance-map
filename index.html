@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-거리맵 v0.4.4</title>
+    <title>선이음-오십보백보 v0.5.1</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -34,7 +34,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -64,16 +65,58 @@ button {
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.18);
 }
 
+.brand-block {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .eyebrow {
   margin: 0 0 2px;
   font-size: 12px;
   opacity: 0.82;
 }
 
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 h1 {
   margin: 0;
-  font-size: 21px;
+  font-size: 20px;
   line-height: 1.1;
+  white-space: nowrap;
+}
+
+.district-select {
+  min-width: 76px;
+  height: 34px;
+  padding: 0 26px 0 9px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.16);
+  font-size: 14px;
+  font-weight: 850;
+}
+
+@media (max-width: 360px) {
+  h1 {
+    font-size: 18px;
+  }
+
+  .district-select {
+    min-width: 70px;
+    padding-right: 20px;
+    font-size: 13px;
+  }
+}
+
+.district-select option {
+  color: #172033;
+  background: #ffffff;
 }
 
 .icon-button {
@@ -90,7 +133,7 @@ h1 {
 
 .control-panel {
   position: fixed;
-  top: calc(68px + env(safe-area-inset-top));
+  top: calc(76px + env(safe-area-inset-top));
   left: 10px;
   right: 10px;
   z-index: 850;
@@ -100,9 +143,9 @@ h1 {
 
 .file-button,
 .secondary-button,
-.filter-tab,
 .floating-actions button,
 .radius-buttons button,
+.external-map-actions button,
 .primary-wide {
   min-height: 44px;
   border-radius: 8px;
@@ -153,8 +196,7 @@ h1 {
   border: 1px solid var(--line);
 }
 
-.result-item,
-.nearest-item {
+.result-item {
   width: 100%;
   padding: 12px;
   text-align: left;
@@ -162,20 +204,17 @@ h1 {
   border-bottom: 1px solid #edf1f7;
 }
 
-.result-item:last-child,
-.nearest-item:last-child {
+.result-item:last-child {
   border-bottom: 0;
 }
 
-.result-name,
-.nearest-name {
+.result-name {
   display: block;
   font-size: 15px;
   font-weight: 850;
 }
 
-.result-meta,
-.nearest-meta {
+.result-meta {
   display: block;
   margin-top: 4px;
   font-size: 13px;
@@ -192,6 +231,10 @@ h1 {
   width: 100%;
   height: 100dvh;
   background: #dce7f4;
+}
+
+#map.picking {
+  cursor: crosshair;
 }
 
 .map-notice {
@@ -217,7 +260,7 @@ h1 {
   bottom: calc(14px + env(safe-area-inset-bottom));
   z-index: 870;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 10px;
 }
 
@@ -231,8 +274,12 @@ h1 {
   background: #047857;
 }
 
-.bottom-sheet,
-.nearest-sheet {
+.floating-actions button.active {
+  outline: 3px solid rgba(255, 255, 255, 0.72);
+  outline-offset: -5px;
+}
+
+.bottom-sheet {
   position: fixed;
   left: 0;
   right: 0;
@@ -259,8 +306,7 @@ h1 {
   gap: 12px;
 }
 
-.bottom-sheet .icon-button,
-.nearest-sheet .icon-button {
+.bottom-sheet .icon-button {
   flex: 0 0 auto;
   color: #22304a;
   background: #edf2f7;
@@ -274,7 +320,6 @@ h1 {
 }
 
 .bottom-sheet h2,
-.nearest-sheet h2,
 .info-dialog h2 {
   margin: 0;
   font-size: 19px;
@@ -292,6 +337,17 @@ h1 {
 .distance-line {
   color: #111827;
   font-weight: 800;
+}
+
+.external-map-actions {
+  margin-top: 10px;
+}
+
+.detail-map-button {
+  width: 100%;
+  color: #ffffff;
+  background: #2c6bed;
+  box-shadow: 0 5px 14px rgba(44, 107, 237, 0.22);
 }
 
 .restriction-guide {
@@ -361,18 +417,6 @@ h1 {
   background: #e5e7eb;
 }
 
-.nearest-sheet {
-  max-height: 58dvh;
-  overflow: auto;
-}
-
-.nearest-list {
-  margin-top: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  overflow: hidden;
-}
-
 .hidden {
   display: none !important;
 }
@@ -437,8 +481,7 @@ h1 {
     width: 420px;
   }
 
-  .bottom-sheet,
-  .nearest-sheet {
+  .bottom-sheet {
     left: 14px;
     right: auto;
     bottom: 14px;
@@ -459,9 +502,23 @@ h1 {
   <body>
     <div class="app-shell">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">투표소 주변 현장단속 거리 확인 도구</p>
-          <h1>선이음-거리맵</h1>
+        <div class="brand-block">
+          <p class="eyebrow">투표소 주변 50m·100m 제한거리 확인</p>
+          <div class="title-row">
+            <h1>선이음-오십보백보</h1>
+            <select id="districtSelect" class="district-select" aria-label="구군 선택">
+              <option value="전체">전체</option>
+              <option value="중구">중구</option>
+              <option value="동구">동구</option>
+              <option value="서구">서구</option>
+              <option value="남구">남구</option>
+              <option value="북구">북구</option>
+              <option value="수성구">수성구</option>
+              <option value="달서구">달서구</option>
+              <option value="달성군">달성군</option>
+              <option value="군위군">군위군</option>
+            </select>
+          </div>
         </div>
         <button id="infoButton" class="icon-button" type="button" aria-label="업무 참고 안내">?</button>
       </header>
@@ -486,9 +543,8 @@ h1 {
       </main>
 
       <div class="floating-actions" aria-label="현장 기능">
-        <button id="locateButton" type="button">내 위치</button>
-        <button id="manualLocationButton" type="button">위치 찍기</button>
-        <button id="nearestButton" type="button">가까운 투표소</button>
+        <button id="locateButton" type="button" aria-pressed="true">따라가기 ON</button>
+        <button id="manualLocationButton" type="button">지점 찍기</button>
       </div>
 
       <section id="bottomSheet" class="bottom-sheet hidden" aria-live="polite">
@@ -502,7 +558,10 @@ h1 {
         </div>
         <p id="selectedBuilding" class="place-building"></p>
         <p id="selectedAddress" class="place-address"></p>
-        <p id="selectedDistance" class="distance-line">내 위치를 허용하면 선택 투표소와의 거리를 표시합니다.</p>
+        <div class="external-map-actions">
+          <button id="kakaoMapButton" class="detail-map-button" type="button">상세지도 확인</button>
+        </div>
+        <p id="selectedDistance" class="distance-line">투표소를 선택한 뒤 현장 지점을 찍으면 거리를 계산합니다.</p>
         <div class="restriction-guide" aria-label="거리별 제한사항">
           <div><strong>50m</strong><span>출구조사 제한범위</span></div>
           <div><strong>100m</strong><span>투표참여 권유활동(현수막 포함) 제한 / 소란 행위 제한</span></div>
@@ -516,19 +575,11 @@ h1 {
         </div>
       </section>
 
-      <section id="nearestSheet" class="nearest-sheet hidden" aria-live="polite">
-        <div class="sheet-title-row">
-          <h2>현재 위치 주변</h2>
-          <button id="closeNearestButton" class="icon-button" type="button" aria-label="닫기">×</button>
-        </div>
-        <div id="nearestList" class="nearest-list"></div>
-      </section>
-
       <dialog id="infoDialog" class="info-dialog">
         <form method="dialog">
           <h2>업무 참고용 안내</h2>
           <p>
-            본 프로그램의 거리 표시는 등록된 투표소 좌표 및 지도/GPS 정보를 기반으로 산출한 참고자료입니다.
+            본 프로그램의 거리 표시는 등록된 투표소 좌표와 GPS 또는 지도에서 찍은 지점을 기반으로 산출한 참고자료입니다.
             지도상 거리와 실제 현장 측정값에는 차이가 있을 수 있으며, 특히 거리 제한 경계 부근에서는
             현장 확인 및 관계 법령에 따른 별도 판단이 필요합니다.
           </p>
@@ -544,11 +595,12 @@ h1 {
   window.Suneum = window.Suneum || {};
 
   window.Suneum.config = {
-    appName: "선이음-거리맵",
-    version: "0.4.1-embedded-daegu",
+    appName: "선이음-오십보백보",
+    version: "0.5.1-kakao-link",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
+    districtOptions: ["전체", "중구", "동구", "서구", "남구", "북구", "수성구", "달서구", "달성군", "군위군"],
     defaultMapStyle: "osm",
     mapStyles: {
       osm: {
@@ -563,7 +615,10 @@ h1 {
     geocode: {
       enabled: false,
       provider: "none",
-      note: "현장용은 대구 선거일 투표소 좌표 내장 방식입니다."
+      note: "현장용은 대구 사전투표소 및 선거일 투표소 좌표 내장 방식입니다."
+    },
+    externalMaps: {
+      kakaoMapLinkBase: "https://map.kakao.com/link/map/"
     },
     lawInfoSlots: [
       { radius: 50, title: "50m 관련 법률정보", status: "향후 연결 예정" },
@@ -681,9 +736,11 @@ h1 {
   window.Suneum = window.Suneum || {};
 
   var REQUIRED_HEADERS = ["투표소명", "주소"];
-  var OPTIONAL_HEADERS = ["구분", "건물명", "위도", "경도", "비고"];
+  var OPTIONAL_HEADERS = ["구분", "구군명", "건물명", "위도", "경도", "비고"];
+  var DISTRICTS = ["중구", "동구", "서구", "남구", "북구", "수성구", "달서구", "달성군", "군위군"];
   var HEADER_ALIASES = {
     "구분": ["구분", "투표소구분", "선거구분"],
+    "구군명": ["구군명", "구시군명", "시군구명", "위원회명"],
     "투표소명": ["투표소명", "사전투표소명", "명칭"],
     "건물명": ["건물명", "건물명(층)", "투표소건물명", "소재건물명", "설치장소(건물명)", "설치장소"],
     "주소": ["주소", "투표소주소", "투표소 주소", "소재지", "투표소소재지"],
@@ -716,6 +773,22 @@ h1 {
     if (type === "early") return "사전투표소";
     if (type === "election") return "선거일 투표소";
     return "구분 확인 필요";
+  }
+
+  function normalizeDistrict(value) {
+    var text = String(value || "").replace(/\s+/g, "").trim();
+    var sortedDistricts = DISTRICTS.slice().sort(function (a, b) {
+      return b.length - a.length;
+    });
+    if (!text) return "";
+    for (var i = 0; i < sortedDistricts.length; i += 1) {
+      if (text.indexOf(sortedDistricts[i]) !== -1) return sortedDistricts[i];
+    }
+    return "";
+  }
+
+  function deriveDistrict(address, fallback) {
+    return normalizeDistrict(fallback) || normalizeDistrict(address);
   }
 
   function getHeaderMap(row) {
@@ -831,6 +904,7 @@ h1 {
 
       var name = String(normalized["투표소명"] || "").trim();
       var address = String(normalized["주소"] || "").trim();
+      var district = deriveDistrict(address, normalized["구군명"]);
       var building = String(normalized["건물명"] || "").trim();
       var note = String(normalized["비고"] || "").trim();
       var rawType = String(normalized["구분"] || "").trim();
@@ -877,6 +951,7 @@ h1 {
         rowNumber: rowNumber,
         type: type,
         typeLabel: typeLabel(type),
+        district: district,
         name: name,
         building: building,
         address: address,
@@ -887,7 +962,7 @@ h1 {
         coordinateSource: latValid && lngValid ? "excel" : "",
         coordinateWarnings: coordinateWarnings,
         geocodeStatus: latValid && lngValid ? "좌표 있음" : "좌표 확인 필요",
-        searchText: [rawType, name, building, address, note].join(" ").toLowerCase(),
+        searchText: [district, rawType, name, building, address, note].join(" ").toLowerCase(),
         rowErrors: rowErrors
       });
     });
@@ -968,7 +1043,8 @@ h1 {
     parseWorkbook: parseWorkbook,
     parseRows: parseRows,
     rowsFromAoa: rowsFromAoa,
-    validateRows: validateRows
+    validateRows: validateRows,
+    deriveDistrict: deriveDistrict
   };
 })();
 
@@ -984,8 +1060,12 @@ h1 {
   var circle100;
   var userMarker;
   var userAccuracyCircle;
+  var pickedMarker;
+  var measureLine;
   var pickLocationHandler;
-  var currentFilter = "all";
+  var currentFilters = {
+    district: "전체"
+  };
   var places = [];
 
   function initMap() {
@@ -1002,14 +1082,14 @@ h1 {
     window.L.control.zoom({ position: "bottomright" }).addTo(map);
     markerLayer = window.L.layerGroup().addTo(map);
 
-    setMapStyle(window.Suneum.config.defaultMapStyle || "gray");
+    setMapStyle(window.Suneum.config.defaultMapStyle || "osm");
     return true;
   }
 
   function setMapStyle(styleKey) {
     if (!map) return;
     var styles = window.Suneum.config.mapStyles || {};
-    var style = styles[styleKey] || styles.gray || styles.osm;
+    var style = styles[styleKey] || styles.osm;
     if (!style) return;
 
     if (activeTileLayer) {
@@ -1051,10 +1131,23 @@ h1 {
     });
   }
 
-  function setPlaces(nextPlaces, filter) {
+  function setPlaces(nextPlaces, filters) {
     places = nextPlaces || [];
-    currentFilter = filter || currentFilter;
+    setCurrentFilters(filters);
     renderMarkers();
+  }
+
+  function setCurrentFilters(filters) {
+    if (!filters) return;
+    if (typeof filters === "string") {
+      currentFilters.district = filters;
+      return;
+    }
+    currentFilters.district = filters.district || "전체";
+  }
+
+  function placeMatchesFilters(place) {
+    return currentFilters.district === "전체" || place.district === currentFilters.district;
   }
 
   function renderMarkers() {
@@ -1064,7 +1157,7 @@ h1 {
     var bounds = [];
     places.forEach(function (place) {
       if (!place.hasValidCoordinates) return;
-      if (currentFilter !== "all" && place.type !== currentFilter) return;
+      if (!placeMatchesFilters(place)) return;
 
       var marker = window.L.marker([place.lat, place.lng], {
         icon: makeIcon(place),
@@ -1081,11 +1174,13 @@ h1 {
     if (bounds.length) {
       map.fitBounds(bounds, { padding: [34, 34], maxZoom: 16 });
       hideMapNotice();
+    } else if (places.length) {
+      showMapNotice("선택한 구군에 표시할 투표소가 없습니다.");
     }
   }
 
-  function setFilter(filter) {
-    currentFilter = filter;
+  function setFilter(filters) {
+    setCurrentFilters(filters);
     renderMarkers();
   }
 
@@ -1137,12 +1232,13 @@ h1 {
     return "50m: 출구조사 제한범위 / 100m: 투표참여 권유활동(현수막 포함) 제한 및 소란 행위 제한 범위입니다.";
   }
 
-  function setUserLocation(position) {
+  function setUserLocation(position, options) {
     if (!map || !position) return;
     var lat = position.coords.latitude;
     var lng = position.coords.longitude;
     var accuracy = position.coords.accuracy;
     var center = [lat, lng];
+    var shouldFollow = Boolean(options && options.follow);
 
     if (userMarker) userMarker.remove();
     if (userAccuracyCircle) userAccuracyCircle.remove();
@@ -1165,7 +1261,14 @@ h1 {
       }).addTo(map);
     }
 
-    map.setView(center, Math.max(map.getZoom(), 17));
+    if (shouldFollow) {
+      map.setView(center, Math.max(map.getZoom(), 17));
+    }
+  }
+
+  function focusUserLocation(position) {
+    if (!map || !position) return;
+    map.setView([position.coords.latitude, position.coords.longitude], Math.max(map.getZoom(), 17));
   }
 
   function setUserPoint(lat, lng, accuracy) {
@@ -1175,7 +1278,40 @@ h1 {
         longitude: lng,
         accuracy: Number.isFinite(accuracy) ? accuracy : null
       }
-    });
+    }, { follow: true });
+  }
+
+  function clearPickedPoint() {
+    if (pickedMarker) pickedMarker.remove();
+    if (measureLine) measureLine.remove();
+    pickedMarker = null;
+    measureLine = null;
+  }
+
+  function setPickedPoint(lat, lng, place) {
+    if (!map) return;
+    clearPickedPoint();
+
+    var point = [lat, lng];
+    pickedMarker = window.L.circleMarker(point, {
+      radius: 8,
+      color: "#ffffff",
+      weight: 3,
+      fillColor: "#d97706",
+      fillOpacity: 1
+    }).addTo(map);
+
+    if (place && place.hasValidCoordinates) {
+      var placePoint = [place.lat, place.lng];
+      measureLine = window.L.polyline([placePoint, point], {
+        color: "#d97706",
+        weight: 3,
+        dashArray: "6 7"
+      }).addTo(map);
+      map.fitBounds([placePoint, point], { padding: [54, 54], maxZoom: 18 });
+    } else {
+      map.setView(point, Math.max(map.getZoom(), 17));
+    }
   }
 
   function enableUserPointPicking(callback) {
@@ -1184,10 +1320,13 @@ h1 {
       map.off("click", pickLocationHandler);
     }
 
-    showMapNotice("지도에서 현재 문제 장소를 한 번 누르세요. 누른 지점을 기준으로 선택 투표소와의 거리를 계산합니다.");
+    var mapElement = document.getElementById("map");
+    if (mapElement) mapElement.classList.add("picking");
+    showMapNotice("지도에서 현장 단속 지점을 한 번 누르세요. 선택한 투표소와 찍은 지점 사이의 거리를 계산합니다.");
     pickLocationHandler = function (event) {
       map.off("click", pickLocationHandler);
       pickLocationHandler = null;
+      if (mapElement) mapElement.classList.remove("picking");
       callback(event.latlng.lat, event.latlng.lng);
     };
     map.on("click", pickLocationHandler);
@@ -1207,7 +1346,10 @@ h1 {
     showRadius: showRadius,
     clearCircles: clearCircles,
     setUserLocation: setUserLocation,
+    focusUserLocation: focusUserLocation,
     setUserPoint: setUserPoint,
+    setPickedPoint: setPickedPoint,
+    clearPickedPoint: clearPickedPoint,
     enableUserPointPicking: enableUserPointPicking,
     showMapNotice: showMapNotice
   };
@@ -1217,12 +1359,17 @@ h1 {
 (function () {
   window.Suneum = window.Suneum || {};
 
+  var DISTRICT_ALL = "전체";
   var state = {
     places: [],
     selectedPlace: null,
     userPosition: null,
+    pickedPosition: null,
     userPositionSource: "",
-    filter: "all"
+    districtFilter: DISTRICT_ALL,
+    followUser: true,
+    locationWatchId: null,
+    lastLocationErrorShown: false
   };
 
   function byId(id) {
@@ -1233,26 +1380,26 @@ h1 {
     window.Suneum.map.initMap();
     bindEvents();
     loadEmbeddedData();
+    updateFollowButton();
+    window.setTimeout(function () {
+      startLocationWatch(true);
+    }, 300);
   }
 
   function bindEvents() {
     byId("searchInput").addEventListener("input", handleSearch);
-    byId("locateButton").addEventListener("click", locateUser);
+    byId("districtSelect").addEventListener("change", function (event) {
+      setDistrictFilter(event.target.value);
+    });
+    byId("locateButton").addEventListener("click", toggleFollowUser);
     byId("manualLocationButton").addEventListener("click", enableManualLocation);
-    byId("nearestButton").addEventListener("click", showNearest);
+    byId("kakaoMapButton").addEventListener("click", openKakaoMap);
     byId("closeSheetButton").addEventListener("click", hideBottomSheet);
-    byId("closeNearestButton").addEventListener("click", hideNearestSheet);
     byId("focusSelectedButton").addEventListener("click", function () {
       window.Suneum.map.focusPlace(state.selectedPlace);
     });
     byId("infoButton").addEventListener("click", function () {
       byId("infoDialog").showModal();
-    });
-
-    Array.prototype.forEach.call(document.querySelectorAll(".filter-tab"), function (button) {
-      button.addEventListener("click", function () {
-        setFilter(button.dataset.filter);
-      });
     });
 
     Array.prototype.forEach.call(document.querySelectorAll("[data-radius]"), function (button) {
@@ -1278,30 +1425,19 @@ h1 {
   function applyDataset(result) {
     state.places = result.places;
     state.selectedPlace = null;
+    state.pickedPosition = null;
     byId("searchInput").value = "";
     byId("searchResults").classList.add("hidden");
     hideBottomSheet();
-    window.Suneum.map.setPlaces(state.places, state.filter);
+    window.Suneum.map.clearCircles();
+    window.Suneum.map.clearPickedPoint();
+    window.Suneum.map.setPlaces(state.places, { district: state.districtFilter });
 
-    var missingCoordinates = result.stats.missing;
     if (result.errors.length) {
       showErrors(result.errors.slice(0, 10));
-    } else if (missingCoordinates) {
-      if (!result.stats.valid) {
-        window.Suneum.map.showMapNotice("정상 좌표가 없습니다. 배포 파일의 내장 좌표자료를 확인하세요.");
-      }
+    } else if (result.stats.missing && !result.stats.valid) {
+      window.Suneum.map.showMapNotice("정상 좌표가 없습니다. 배포 파일의 내장 좌표자료를 확인하세요.");
     }
-  }
-
-  function recomputeStats() {
-    return {
-      total: state.places.length,
-      early: state.places.filter(function (place) { return place.type === "early"; }).length,
-      election: state.places.filter(function (place) { return place.type === "election"; }).length,
-      valid: state.places.filter(function (place) { return place.hasValidCoordinates; }).length,
-      missing: state.places.filter(function (place) { return !place.hasValidCoordinates; }).length,
-      errorCount: state.places.reduce(function (sum, place) { return sum + (place.rowErrors || []).length; }, 0)
-    };
   }
 
   function showErrors(errors) {
@@ -1316,16 +1452,35 @@ h1 {
     window.Suneum.map.showMapNotice(message);
   }
 
-  function setFilter(filter) {
-    state.filter = filter;
-    Array.prototype.forEach.call(document.querySelectorAll(".filter-tab"), function (button) {
-      button.classList.toggle("active", button.dataset.filter === filter);
-    });
-    window.Suneum.map.setFilter(filter);
+  function setDistrictFilter(district) {
+    state.districtFilter = district || DISTRICT_ALL;
+
+    if (state.selectedPlace && !placeMatchesDistrict(state.selectedPlace)) {
+      state.selectedPlace = null;
+      state.pickedPosition = null;
+      hideBottomSheet();
+      window.Suneum.map.clearCircles();
+      window.Suneum.map.clearPickedPoint();
+    }
+
+    window.Suneum.map.setFilter({ district: state.districtFilter });
+    renderSearchResults(byId("searchInput").value);
+  }
+
+  function placeMatchesDistrict(place) {
+    return state.districtFilter === DISTRICT_ALL || place.district === state.districtFilter;
+  }
+
+  function getVisiblePlaces() {
+    return state.places.filter(placeMatchesDistrict);
   }
 
   function handleSearch(event) {
-    var query = event.target.value.trim().toLowerCase();
+    renderSearchResults(event.target.value);
+  }
+
+  function renderSearchResults(rawQuery) {
+    var query = String(rawQuery || "").trim().toLowerCase();
     var results = byId("searchResults");
     if (!query) {
       results.classList.add("hidden");
@@ -1333,14 +1488,14 @@ h1 {
       return;
     }
 
-    var matches = state.places
+    var matches = getVisiblePlaces()
       .filter(function (place) {
         return place.searchText.indexOf(query) !== -1;
       })
       .slice(0, 20);
 
     if (!matches.length) {
-      results.innerHTML = '<button class="result-item" type="button"><span class="result-name">검색 결과 없음</span><span class="result-meta">투표소명, 건물명, 주소를 확인하세요.</span></button>';
+      results.innerHTML = '<button class="result-item" type="button"><span class="result-name">검색 결과 없음</span><span class="result-meta">선택한 구군 안에서 투표소명, 건물명, 주소를 확인하세요.</span></button>';
       results.classList.remove("hidden");
       return;
     }
@@ -1357,11 +1512,13 @@ h1 {
   }
 
   function renderSearchItem(place) {
-    var coordinateStatus = place.hasValidCoordinates ? "좌표 정상" : "좌표 확인 필요";
+    var meta = [place.district, place.typeLabel, place.building || place.address]
+      .filter(Boolean)
+      .join(" · ");
     return (
       '<button class="result-item" type="button" data-place-id="' + place.id + '">' +
       '<span class="result-name">' + escapeHtml(place.name || "(투표소명 없음)") + "</span>" +
-      '<span class="result-meta">' + escapeHtml(place.typeLabel + " · " + (place.building || place.address || "") + " · " + coordinateStatus) + "</span>" +
+      '<span class="result-meta">' + escapeHtml(meta) + "</span>" +
       "</button>"
     );
   }
@@ -1369,12 +1526,16 @@ h1 {
   function selectPlace(place, moveMap) {
     if (!place) return;
     state.selectedPlace = place;
-    byId("selectedType").textContent = place.typeLabel;
+    state.pickedPosition = null;
+    window.Suneum.map.clearPickedPoint();
+
+    byId("selectedType").textContent = [place.district, place.typeLabel].filter(Boolean).join(" · ");
     byId("selectedName").textContent = place.name || "(투표소명 없음)";
     byId("selectedBuilding").textContent = place.building || "";
     byId("selectedAddress").textContent = place.address || "";
     updateSelectedDistance();
     byId("bottomSheet").classList.remove("hidden");
+
     if (moveMap) {
       if (place.hasValidCoordinates) {
         window.Suneum.map.focusPlace(place);
@@ -1389,56 +1550,168 @@ h1 {
     byId("bottomSheet").classList.add("hidden");
   }
 
-  function locateUser() {
+  function startLocationWatch(announceErrors) {
     if (window.isSecureContext === false) {
-      window.Suneum.map.showMapNotice(
-        "현재 주소가 file:// 또는 content:// 방식이면 휴대폰 GPS 권한이 제한될 수 있습니다. HTTPS 주소로 접속하거나 '위치 찍기'로 현장 위치를 직접 지정하세요."
-      );
+      if (announceErrors) {
+        window.Suneum.map.showMapNotice(
+          "현재 주소가 file:// 또는 content:// 방식이면 휴대폰 GPS 권한이 제한될 수 있습니다. HTTPS 주소로 접속하거나 '지점 찍기'로 현장 위치를 지정하세요."
+        );
+      }
+      updateFollowButton();
       return;
     }
 
     if (!navigator.geolocation) {
-      window.Suneum.map.showMapNotice("이 브라우저에서는 내 위치 기능을 사용할 수 없습니다.");
+      if (announceErrors) {
+        window.Suneum.map.showMapNotice("이 브라우저에서는 내 위치 기능을 사용할 수 없습니다.");
+      }
+      updateFollowButton();
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(
-      function (position) {
-        state.userPosition = position;
-        state.userPositionSource = "gps";
-        window.Suneum.map.setUserLocation(position);
-        updateSelectedDistance();
-      },
-      function (error) {
-        var message = "위치 권한을 허용하지 않았거나 현재 위치를 가져오지 못했습니다.";
-        if (error && error.code === 1) {
-          message += " 브라우저 설정에서 위치 권한을 허용하거나, '위치 찍기'로 현장 위치를 직접 지정하세요.";
+    if (state.locationWatchId !== null) return;
+
+    try {
+      state.locationWatchId = navigator.geolocation.watchPosition(
+        function (position) {
+          state.userPosition = position;
+          state.userPositionSource = "gps";
+          state.lastLocationErrorShown = false;
+          window.Suneum.map.setUserLocation(position, { follow: state.followUser });
+          updateSelectedDistance();
+          updateFollowButton();
+        },
+        function (error) {
+          if (error && error.code === 1) {
+            stopLocationWatch();
+          }
+          if (announceErrors || !state.lastLocationErrorShown) {
+            window.Suneum.map.showMapNotice(locationErrorMessage(error));
+            state.lastLocationErrorShown = true;
+          }
+          updateFollowButton();
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 12000,
+          maximumAge: 5000
         }
-        if (error && error.message) message += " " + error.message;
-        window.Suneum.map.showMapNotice(message);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 15000
+      );
+    } catch (error) {
+      if (announceErrors) {
+        window.Suneum.map.showMapNotice(locationErrorMessage(error));
       }
-    );
+      stopLocationWatch();
+    }
+
+    updateFollowButton();
+  }
+
+  function stopLocationWatch() {
+    if (state.locationWatchId !== null && navigator.geolocation) {
+      navigator.geolocation.clearWatch(state.locationWatchId);
+    }
+    state.locationWatchId = null;
+  }
+
+  function locationErrorMessage(error) {
+    var message = "현재 위치를 가져오지 못했습니다.";
+    if (error && error.code === 1) {
+      message = "위치 권한을 허용하지 않았습니다. 브라우저 설정에서 위치 권한을 허용하거나, '지점 찍기'로 현장 위치를 지정하세요.";
+    } else if (error && error.code === 2) {
+      message = "휴대폰 위치 신호를 확인하지 못했습니다. 잠시 뒤 다시 시도하거나 '지점 찍기'를 사용하세요.";
+    } else if (error && error.code === 3) {
+      message = "현재 위치 확인 시간이 초과되었습니다. 실외 또는 창가에서 다시 시도해 보세요.";
+    }
+    if (error && error.message) message += " " + error.message;
+    return message;
+  }
+
+  function toggleFollowUser() {
+    if (state.locationWatchId === null) {
+      state.followUser = true;
+      updateFollowButton();
+      startLocationWatch(true);
+      if (state.userPosition) {
+        window.Suneum.map.focusUserLocation(state.userPosition);
+      }
+      return;
+    }
+
+    state.followUser = !state.followUser;
+    updateFollowButton();
+    if (state.followUser && state.userPosition) {
+      window.Suneum.map.focusUserLocation(state.userPosition);
+    }
+  }
+
+  function updateFollowButton() {
+    var button = byId("locateButton");
+    if (!button) return;
+    var active = state.locationWatchId !== null && state.followUser;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", active ? "true" : "false");
+    if (state.locationWatchId === null) {
+      button.textContent = "내 위치 켜기";
+    } else {
+      button.textContent = state.followUser ? "따라가기 ON" : "따라가기 OFF";
+    }
   }
 
   function enableManualLocation() {
+    if (!state.selectedPlace) {
+      window.Suneum.map.showMapNotice("먼저 투표소를 검색하거나 지도 마커를 눌러 선택하세요. 그 다음 현장 지점을 찍으면 거리가 계산됩니다.");
+      byId("searchInput").focus();
+      return;
+    }
+
+    if (!state.selectedPlace.hasValidCoordinates) {
+      window.Suneum.map.showMapNotice("선택한 투표소의 좌표가 없어 지점 거리를 계산할 수 없습니다.");
+      return;
+    }
+
+    state.followUser = false;
+    updateFollowButton();
+    window.Suneum.map.focusPlace(state.selectedPlace);
+    window.Suneum.map.showRadius(state.selectedPlace, "both");
     window.Suneum.map.enableUserPointPicking(function (lat, lng) {
-      state.userPosition = {
+      state.pickedPosition = {
         coords: {
           latitude: lat,
           longitude: lng,
           accuracy: null
         }
       };
-      state.userPositionSource = "manual";
-      window.Suneum.map.setUserPoint(lat, lng, null);
+      window.Suneum.map.setPickedPoint(lat, lng, state.selectedPlace);
       updateSelectedDistance();
-      window.Suneum.map.showMapNotice("지도에서 지정한 위치를 현재 문제 장소로 표시했습니다. 실제 현장 위치와 차이가 있을 수 있습니다.");
+      window.Suneum.map.showMapNotice("찍은 지점 기준으로 선택 투표소와의 거리를 계산했습니다. 경계 부근은 현장 확인이 필요합니다.");
     });
+  }
+
+  function openKakaoMap() {
+    if (!state.selectedPlace) {
+      window.Suneum.map.showMapNotice("먼저 투표소를 선택한 뒤 상세지도를 확인하세요.");
+      byId("searchInput").focus();
+      return;
+    }
+
+    if (!state.selectedPlace.hasValidCoordinates) {
+      window.Suneum.map.showMapNotice("선택한 투표소의 좌표가 없어 카카오지도에서 열 수 없습니다.");
+      return;
+    }
+
+    var url = buildKakaoMapUrl(state.selectedPlace);
+    var opened = window.open(url, "_blank", "noopener");
+    if (!opened) {
+      window.location.href = url;
+    }
+  }
+
+  function buildKakaoMapUrl(place) {
+    var base = (window.Suneum.config.externalMaps && window.Suneum.config.externalMaps.kakaoMapLinkBase) ||
+      "https://map.kakao.com/link/map/";
+    var label = encodeURIComponent(place.name || "투표소");
+    return base + label + "," + place.lat + "," + place.lng;
   }
 
   function updateSelectedDistance() {
@@ -1451,90 +1724,41 @@ h1 {
       return;
     }
 
-    if (!state.userPosition) {
-      line.textContent = "내 위치를 허용하면 선택 투표소와의 거리를 표시합니다.";
+    var activePosition = state.pickedPosition || state.userPosition;
+    if (!activePosition) {
+      line.textContent = "현재 위치를 허용하거나 '지점 찍기'로 현장 지점을 선택하세요.";
       return;
     }
 
-    var userPoint = {
-      lat: state.userPosition.coords.latitude,
-      lng: state.userPosition.coords.longitude
+    var targetPoint = {
+      lat: activePosition.coords.latitude,
+      lng: activePosition.coords.longitude
     };
     var placePoint = {
       lat: state.selectedPlace.lat,
       lng: state.selectedPlace.lng
     };
-    var meters = window.Suneum.distance.haversineMeters(userPoint, placePoint);
-    var accuracy = state.userPosition.coords.accuracy;
+    var meters = window.Suneum.distance.haversineMeters(targetPoint, placePoint);
+    var isPickedPoint = Boolean(state.pickedPosition);
+    var accuracy = isPickedPoint ? null : activePosition.coords.accuracy;
     var classified = window.Suneum.distance.classifyDistance(meters, accuracy);
-    var sourceText = state.userPositionSource === "manual" ? "지도 지정 위치" : "현재 위치";
-    var accuracyText = Number.isFinite(accuracy) ? " · 현재 위치 정확도 ±" + Math.round(accuracy) + "m" : "";
+    var sourceText = isPickedPoint ? "찍은 지점" : "현재 위치";
+    var accuracyText = Number.isFinite(accuracy) ? " · 위치 정확도 ±" + Math.round(accuracy) + "m" : "";
 
     line.textContent =
+      sourceText +
+      "은 " +
       state.selectedPlace.name +
-      " 기준 " +
+      "에서 " +
       window.Suneum.distance.formatMeters(meters) +
       " · " +
       classified.label +
       accuracyText +
-      " · " +
-      sourceText +
-      " 및 지도 좌표에 따른 참고거리입니다.";
+      " · 지도 좌표 기준 참고거리입니다.";
 
     if (classified.nearBoundary) {
       alert.classList.remove("hidden");
     }
-  }
-
-  function showNearest() {
-    if (!state.userPosition) {
-      locateUser();
-      window.Suneum.map.showMapNotice("현재 위치를 먼저 확인한 뒤 가까운 투표소를 표시합니다.");
-      return;
-    }
-
-    var userPoint = {
-      lat: state.userPosition.coords.latitude,
-      lng: state.userPosition.coords.longitude
-    };
-
-    var nearest = state.places
-      .filter(function (place) { return place.hasValidCoordinates; })
-      .map(function (place) {
-        return {
-          place: place,
-          meters: window.Suneum.distance.haversineMeters(userPoint, { lat: place.lat, lng: place.lng })
-        };
-      })
-      .sort(function (a, b) { return a.meters - b.meters; })
-      .slice(0, 10);
-
-    var list = byId("nearestList");
-    if (!nearest.length) {
-      list.innerHTML = '<div class="nearest-item"><span class="nearest-name">표시 가능한 투표소 없음</span><span class="nearest-meta">내장 좌표자료를 확인하세요.</span></div>';
-    } else {
-      list.innerHTML = nearest.map(function (item, index) {
-        return (
-          '<button class="nearest-item" type="button" data-place-id="' + item.place.id + '">' +
-          '<span class="nearest-name">' + (index + 1) + ". " + escapeHtml(item.place.name) + "</span>" +
-          '<span class="nearest-meta">' + escapeHtml(window.Suneum.distance.formatMeters(item.meters) + " · " + item.place.typeLabel + " · " + (item.place.building || item.place.address)) + "</span>" +
-          "</button>"
-        );
-      }).join("");
-    }
-
-    Array.prototype.forEach.call(list.querySelectorAll(".nearest-item[data-place-id]"), function (button) {
-      button.addEventListener("click", function () {
-        var place = findPlace(button.dataset.placeId);
-        hideNearestSheet();
-        selectPlace(place, true);
-      });
-    });
-    byId("nearestSheet").classList.remove("hidden");
-  }
-
-  function hideNearestSheet() {
-    byId("nearestSheet").classList.add("hidden");
   }
 
   function findPlace(id) {
@@ -1553,6 +1777,8 @@ h1 {
   window.Suneum.app = {
     init: init,
     selectPlace: selectPlace,
+    setDistrictFilter: setDistrictFilter,
+    buildKakaoMapUrl: buildKakaoMapUrl,
     state: state
   };
 
