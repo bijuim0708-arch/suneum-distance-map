@@ -266,8 +266,12 @@ h1 {
 .geocode-key-row,
 .geocode-actions {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr 1fr;
   gap: 7px;
+}
+
+.geocode-key-row {
+  grid-template-columns: 1fr auto;
 }
 
 .geocode-key-row input {
@@ -294,11 +298,17 @@ h1 {
 }
 
 .geocode-actions button:first-child {
+  grid-column: 1 / -1;
   color: #ffffff;
   background: #d97706;
 }
 
-.geocode-actions button:last-child {
+.geocode-actions #downloadXlsxButton {
+  color: #ffffff;
+  background: #059669;
+}
+
+.geocode-actions #downloadCsvButton {
   color: #123c7c;
   background: #e8efff;
 }
@@ -642,6 +652,7 @@ h1 {
           </div>
           <div class="geocode-actions">
             <button id="geocodeButton" type="button">주소 좌표 변환</button>
+            <button id="downloadXlsxButton" type="button">좌표 Excel 저장</button>
             <button id="downloadCsvButton" type="button">좌표 CSV 저장</button>
           </div>
           <div id="geocodeStatus" class="geocode-status">위도·경도 없는 자료는 Kakao 키 입력 후 좌표 변환을 실행하세요.</div>
@@ -1613,6 +1624,7 @@ h1 {
     });
     byId("saveKakaoKeyButton").addEventListener("click", saveKakaoKey);
     byId("geocodeButton").addEventListener("click", geocodeMissingCoordinates);
+    byId("downloadXlsxButton").addEventListener("click", downloadCoordinateXlsx);
     byId("downloadCsvButton").addEventListener("click", downloadCoordinateCsv);
 
     var savedKey = localStorage.getItem("suneumKakaoJsKey") || "";
@@ -1915,6 +1927,57 @@ h1 {
       return;
     }
 
+    var exportData = makeCoordinateExportRows();
+
+    var csv = "\ufeff" + [exportData.headers].concat(exportData.rows).map(function (row) {
+      return row.map(csvCell).join(",");
+    }).join("\n");
+    var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    var url = URL.createObjectURL(blob);
+    var link = document.createElement("a");
+    var date = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = "suneum_distance_map_coordinates_" + date + ".csv";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    setGeocodeStatus("좌표 포함 CSV를 저장했습니다. 다음부터 이 CSV를 불러오면 변환 없이 마커를 표시할 수 있습니다.");
+  }
+
+  function downloadCoordinateXlsx() {
+    if (!state.places.length) {
+      setGeocodeStatus("저장할 투표소 자료가 없습니다.");
+      return;
+    }
+
+    if (!window.XLSX || !window.XLSX.utils) {
+      setGeocodeStatus("Excel 저장 라이브러리를 불러오지 못했습니다. 인터넷 연결 후 다시 실행하거나 CSV 저장을 사용하세요.");
+      return;
+    }
+
+    var exportData = makeCoordinateExportRows();
+    var worksheet = window.XLSX.utils.aoa_to_sheet([exportData.headers].concat(exportData.rows));
+    worksheet["!cols"] = [
+      { wch: 12 },
+      { wch: 28 },
+      { wch: 28 },
+      { wch: 48 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 22 },
+      { wch: 16 },
+      { wch: 12 }
+    ];
+
+    var workbook = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(workbook, worksheet, "투표소_좌표");
+    var date = new Date().toISOString().slice(0, 10);
+    window.XLSX.writeFile(workbook, "suneum_distance_map_coordinates_" + date + ".xlsx");
+    setGeocodeStatus("좌표 포함 Excel을 저장했습니다. 다음부터 이 Excel을 불러오면 Kakao 변환 없이 마커를 표시할 수 있습니다.");
+  }
+
+  function makeCoordinateExportRows() {
     var headers = ["구분", "투표소명", "건물명", "주소", "위도", "경도", "비고", "좌표상태", "좌표출처"];
     var rows = state.places.map(function (place) {
       return [
@@ -1930,20 +1993,10 @@ h1 {
       ];
     });
 
-    var csv = "\ufeff" + [headers].concat(rows).map(function (row) {
-      return row.map(csvCell).join(",");
-    }).join("\n");
-    var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-    var url = URL.createObjectURL(blob);
-    var link = document.createElement("a");
-    var date = new Date().toISOString().slice(0, 10);
-    link.href = url;
-    link.download = "suneum_distance_map_coordinates_" + date + ".csv";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    URL.revokeObjectURL(url);
-    setGeocodeStatus("좌표 포함 CSV를 저장했습니다. 다음부터 이 CSV를 불러오면 변환 없이 마커를 표시할 수 있습니다.");
+    return {
+      headers: headers,
+      rows: rows
+    };
   }
 
   function csvCell(value) {
