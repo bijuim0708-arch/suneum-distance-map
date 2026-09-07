@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 현장용 지도 v0.14.0</title>
+    <title>선이음-오십보백보 현장용 지도 v0.15.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -197,38 +197,6 @@ h1 {
 
 .search-wrap {
   position: relative;
-}
-
-.filter-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  min-height: 30px;
-  padding: 0;
-}
-
-.data-status {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  color: #64748b;
-  font-size: 11px;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.refresh-data-button {
-  flex: 0 0 auto;
-  min-height: 30px;
-  padding: 0 8px;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  color: #123c7c;
-  background: #f8fafc;
-  font-size: 11px;
-  font-weight: 850;
 }
 
 #searchInput {
@@ -642,10 +610,6 @@ h1 {
           />
           <div id="searchResults" class="search-results hidden"></div>
         </div>
-        <div class="filter-row">
-          <button id="refreshDataButton" class="refresh-data-button" type="button">자료 새로고침</button>
-        </div>
-
       </section>
 
       <main class="map-wrap">
@@ -695,7 +659,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.14.0-title-filters",
+    version: "0.15.0-map-first",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
@@ -2209,7 +2173,6 @@ h1 {
     byId("typeSelect").addEventListener("change", function (event) {
       setTypeFilter(event.target.value);
     });
-    byId("refreshDataButton").addEventListener("click", loadEmbeddedData);
     byId("locateButton").addEventListener("click", captureCurrentLocation);
     byId("manualLocationButton").addEventListener("click", enableManualLocation);
     byId("kakaoMapButton").addEventListener("click", openKakaoMap);
