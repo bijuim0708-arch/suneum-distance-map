@@ -150,8 +150,20 @@
           if (value.indexOf("투표소") !== -1) return "선거일 투표소";
           return value || "구분 확인 필요";
         }
-        function validLat(value) { var n = Number(value); return Number.isFinite(n) && n >= -90 && n <= 90; }
-        function validLng(value) { var n = Number(value); return Number.isFinite(n) && n >= -180 && n <= 180; }
+        function coordinateNumber(value) {
+          var raw = text(value).replace(/,/g, "");
+          if (!raw) return null;
+          var n = Number(raw);
+          return Number.isFinite(n) ? n : null;
+        }
+        function validLat(value) {
+          var n = coordinateNumber(value);
+          return n !== null && n !== 0 && n >= -90 && n <= 90;
+        }
+        function validLng(value) {
+          var n = coordinateNumber(value);
+          return n !== null && n !== 0 && n >= -180 && n <= 180;
+        }
         function forceWorksheetRef(sheet) {
           if (!window.XLSX) return;
           var refs = Object.keys(sheet || {}).filter(function (key) { return /^[A-Z]+[0-9]+$/.test(key); });
