@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 현장용 지도 v0.9.0</title>
+    <title>선이음-오십보백보 현장용 지도 v0.10.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -655,7 +655,7 @@ h1 {
       </main>
 
       <div class="floating-actions" aria-label="현장 기능">
-        <button id="locateButton" type="button">내 위치 찍기</button>
+        <button id="locateButton" type="button">현재 내 위치 찍기</button>
         <button id="manualLocationButton" type="button">지점 찍기</button>
       </div>
 
@@ -708,7 +708,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.9.0-field-tools",
+    version: "0.10.0-current-location",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
@@ -1572,18 +1572,20 @@ h1 {
       measureLine = null;
     }
 
-    function setPickedPoint(lat, lng, place) {
+    function setPickedPoint(lat, lng, place, options) {
       if (!map) return;
       clearPickedPoint();
 
       var point = [lat, lng];
-      pickedMarker = window.L.circleMarker(point, {
-        radius: 8,
-        color: "#ffffff",
-        weight: 3,
-        fillColor: "#d97706",
-        fillOpacity: 1
-      }).addTo(map);
+      if (!(options && options.hideMarker)) {
+        pickedMarker = window.L.circleMarker(point, {
+          radius: 8,
+          color: "#ffffff",
+          weight: 3,
+          fillColor: "#d97706",
+          fillOpacity: 1
+        }).addTo(map);
+      }
 
       if (place && place.hasValidCoordinates) {
         var placePoint = [place.lat, place.lng];
@@ -1886,12 +1888,14 @@ h1 {
       }, 0);
     }
 
-    function setPickedPoint(lat, lng, place) {
+    function setPickedPoint(lat, lng, place, options) {
       if (!map) return;
       clearPickedPoint();
 
-      pickedMarker = makePointMarker(lat, lng, "picked");
-      pickedMarker.setMap(map);
+      if (!(options && options.hideMarker)) {
+        pickedMarker = makePointMarker(lat, lng, "picked");
+        pickedMarker.setMap(map);
+      }
 
       if (place && place.hasValidCoordinates) {
         measureLine = new window.kakao.maps.Polyline({
@@ -1968,7 +1972,7 @@ h1 {
     setUserLocation: function (position, options) { return callEngine("setUserLocation", [position, options]); },
     focusUserLocation: function (position) { return callEngine("focusUserLocation", [position]); },
     setUserPoint: function (lat, lng, accuracy) { return callEngine("setUserPoint", [lat, lng, accuracy]); },
-    setPickedPoint: function (lat, lng, place) { return callEngine("setPickedPoint", [lat, lng, place]); },
+    setPickedPoint: function (lat, lng, place, options) { return callEngine("setPickedPoint", [lat, lng, place, options]); },
     clearPickedPoint: function () { return callEngine("clearPickedPoint"); },
     enableUserPointPicking: function (callback) {
       if (!activeEngine) {
@@ -2256,7 +2260,7 @@ h1 {
       return;
     }
 
-    window.Suneum.map.showMapNotice("현재 위치를 확인하고 있습니다. 위치 권한 요청이 뜨면 허용을 눌러주세요.");
+    window.Suneum.map.showMapNotice("현재 내 위치를 확인하고 있습니다. 위치 권한 요청이 뜨면 허용을 눌러주세요.");
     navigator.geolocation.getCurrentPosition(
       function (position) {
         state.userPosition = position;
@@ -2307,10 +2311,14 @@ h1 {
   function setMeasuredPosition(position, source) {
     state.pickedPosition = position;
     state.measurementSource = source;
+    if (source === "current") {
+      window.Suneum.map.setUserLocation(position, { follow: true });
+    }
     window.Suneum.map.setPickedPoint(
       position.coords.latitude,
       position.coords.longitude,
-      state.selectedPlace
+      state.selectedPlace,
+      source === "current" ? { hideMarker: true } : undefined
     );
     var result = updateSelectedDistance();
     byId("bottomSheet").classList.remove("hidden");
@@ -2355,7 +2363,7 @@ h1 {
 
     var activePosition = state.pickedPosition;
     if (!activePosition) {
-      line.textContent = "내 위치 찍기 또는 지점 찍기를 누르면 선택한 투표소와의 거리를 표시합니다.";
+      line.textContent = "현재 내 위치 찍기 또는 지점 찍기를 누르면 선택한 투표소와의 거리를 표시합니다.";
       return null;
     }
 
@@ -2393,7 +2401,7 @@ h1 {
   }
 
   function formatDistanceMainMessage(source, meters) {
-    var sourceText = source === "current" ? "내 위치" : "찍은 지점";
+    var sourceText = source === "current" ? "현재 내 위치" : "찍은 지점";
     return sourceText + " 기준으로 투표소와의 거리는 " + window.Suneum.distance.formatMeters(meters) + "입니다.";
   }
 
