@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 현장용 지도 v0.16.0</title>
+    <title>선이음-오십보백보 현장용 지도 v0.17.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -144,6 +144,48 @@ h1 {
   }
 }
 
+/* 좁은 휴대폰 화면에서는 제목과 필터를 두 줄로 배치해 잘림을 막는다. */
+@media (max-width: 640px) {
+  .topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    align-items: end;
+    gap: 8px;
+    padding: calc(8px + env(safe-area-inset-top)) 12px 8px;
+  }
+
+  .title-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 6px 8px;
+  }
+
+  h1 {
+    grid-column: 1 / -1;
+    font-size: 21px;
+  }
+
+  .district-select,
+  .title-row .type-select {
+    width: 100%;
+    min-width: 0;
+    height: 38px;
+    padding: 0 30px 0 10px;
+    font-size: 15px;
+  }
+
+  .search-toggle {
+    width: 40px;
+    height: 38px;
+    margin-bottom: 0;
+  }
+
+  /* 확대·축소 버튼을 하단 작업 버튼 위로 올려 겹치지 않게 한다. */
+  .leaflet-bottom.leaflet-right {
+    bottom: calc(86px + env(safe-area-inset-bottom));
+  }
+}
+
 .district-select option,
 .type-select option {
   color: #172033;
@@ -175,6 +217,12 @@ h1 {
   z-index: 850;
   display: grid;
   gap: 8px;
+}
+
+@media (max-width: 640px) {
+  .control-panel {
+    top: calc(116px + env(safe-area-inset-top));
+  }
 }
 
 .file-button,
@@ -669,7 +717,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.16.0-map-first-search-toggle",
+    version: "0.17.0-mobile-controls-layout",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
