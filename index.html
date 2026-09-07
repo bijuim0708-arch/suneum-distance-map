@@ -1414,15 +1414,35 @@ h1 {
       activeTileLayer.addTo(map);
     }
 
-    function makeIcon(place) {
+    function makeIcon(place, offsetX) {
       var markerType = place.hasValidCoordinates ? place.type : "error";
       var label = markerType === "early" ? "사" : markerType === "election" ? "투" : "!";
       return window.L.divIcon({
         className: "",
         html: '<div class="marker-pin ' + markerType + '">' + label + "</div>",
         iconSize: [28, 28],
-        iconAnchor: [14, 14]
+        iconAnchor: [14 - (offsetX || 0), 14]
       });
+    }
+
+    function buildCoordinateGroups() {
+      var groups = {};
+      enginePlaces.forEach(function (place) {
+        if (!place.hasValidCoordinates || !placeMatchesFilters(place)) return;
+        var key = String(place.lat) + "|" + String(place.lng);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(place);
+      });
+      return groups;
+    }
+
+    function markerOffset(place, groups) {
+      var key = String(place.lat) + "|" + String(place.lng);
+      var group = groups[key] || [];
+      var hasEarly = group.some(function (item) { return item.type === "early"; });
+      var hasElection = group.some(function (item) { return item.type === "election"; });
+      if (!hasEarly || !hasElection) return 0;
+      return place.type === "early" ? -16 : 16;
     }
 
     function setEngineFilters(filters) {
@@ -1455,12 +1475,13 @@ h1 {
       markerLayer.clearLayers();
 
       var bounds = [];
+      var coordinateGroups = buildCoordinateGroups();
       enginePlaces.forEach(function (place) {
         if (!place.hasValidCoordinates) return;
         if (!placeMatchesFilters(place)) return;
 
         var marker = window.L.marker([place.lat, place.lng], {
-          icon: makeIcon(place),
+          icon: makeIcon(place, markerOffset(place, coordinateGroups)),
           title: place.name
         });
         marker.on("click", function () {
@@ -1741,11 +1762,12 @@ h1 {
       return place.type === "early" ? "early" : "election";
     }
 
-    function makePlaceMarker(place) {
+    function makePlaceMarker(place, offsetX) {
       var button = document.createElement("button");
       button.type = "button";
       button.className = "marker-pin " + markerClass(place);
       button.textContent = markerLabel(place);
+      if (offsetX) button.style.transform = "translateX(" + offsetX + "px)";
       button.setAttribute("aria-label", place.name || "투표소");
       button.addEventListener("click", function (event) {
         event.preventDefault();
@@ -1760,6 +1782,26 @@ h1 {
         yAnchor: 0.5,
         zIndex: 10
       });
+    }
+
+    function buildCoordinateGroups() {
+      var groups = {};
+      enginePlaces.forEach(function (place) {
+        if (!place.hasValidCoordinates || !placeMatchesFilters(place)) return;
+        var key = String(place.lat) + "|" + String(place.lng);
+        if (!groups[key]) groups[key] = [];
+        groups[key].push(place);
+      });
+      return groups;
+    }
+
+    function markerOffset(place, groups) {
+      var key = String(place.lat) + "|" + String(place.lng);
+      var group = groups[key] || [];
+      var hasEarly = group.some(function (item) { return item.type === "early"; });
+      var hasElection = group.some(function (item) { return item.type === "election"; });
+      if (!hasEarly || !hasElection) return 0;
+      return place.type === "early" ? -16 : 16;
     }
 
     function setEnginePlaces(nextPlaces, filters) {
@@ -1781,12 +1823,13 @@ h1 {
 
       var bounds = new window.kakao.maps.LatLngBounds();
       var count = 0;
+      var coordinateGroups = buildCoordinateGroups();
 
       enginePlaces.forEach(function (place) {
         if (!place.hasValidCoordinates) return;
         if (!placeMatchesFilters(place)) return;
 
-        var marker = makePlaceMarker(place);
+        var marker = makePlaceMarker(place, markerOffset(place, coordinateGroups));
         marker.setMap(map);
         markers.push(marker);
         bounds.extend(toLatLng(place.lat, place.lng));
