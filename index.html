@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 현장용 지도 v0.8.0</title>
+    <title>선이음-오십보백보 현장용 지도 v0.9.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -90,7 +90,8 @@ h1 {
   white-space: nowrap;
 }
 
-.district-select {
+.district-select,
+.type-select {
   min-width: 76px;
   height: 34px;
   padding: 0 26px 0 9px;
@@ -102,19 +103,32 @@ h1 {
   font-weight: 850;
 }
 
+.type-select {
+  min-width: 112px;
+  color: #172033;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+}
+
 @media (max-width: 360px) {
   h1 {
     font-size: 18px;
   }
 
-  .district-select {
+  .district-select,
+  .type-select {
     min-width: 70px;
     padding-right: 20px;
     font-size: 13px;
   }
+
+  .type-select {
+    min-width: 104px;
+  }
 }
 
-.district-select option {
+.district-select option,
+.type-select option {
   color: #172033;
   background: #ffffff;
 }
@@ -170,6 +184,57 @@ h1 {
 
 .search-wrap {
   position: relative;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 1px solid rgba(203, 213, 225, 0.95);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 12px rgba(20, 32, 54, 0.1);
+}
+
+.filter-label {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.filter-row .type-select {
+  flex: 0 0 auto;
+  height: 30px;
+  min-width: 116px;
+  padding: 0 22px 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+.data-status {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.refresh-data-button {
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #123c7c;
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 850;
 }
 
 #searchInput {
@@ -344,6 +409,18 @@ h1 {
   border: 1px solid #bfdbfe;
   font-size: 16px;
   line-height: 1.45;
+}
+
+.distance-line.ready {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  color: #065f46;
+  background: #ecfdf5;
+  border: 2px solid #34d399;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.35;
 }
 
 .external-map-actions {
@@ -559,6 +636,16 @@ h1 {
           />
           <div id="searchResults" class="search-results hidden"></div>
         </div>
+        <div class="filter-row">
+          <span class="filter-label">표시 유형</span>
+          <select id="typeSelect" class="type-select" aria-label="투표소 유형 선택">
+            <option value="전체">전체</option>
+            <option value="사전투표소">사전투표소</option>
+            <option value="선거일 투표소">선거일 투표소</option>
+          </select>
+          <span id="dataStatus" class="data-status">자료 기준일 확인 중...</span>
+          <button id="refreshDataButton" class="refresh-data-button" type="button">자료 새로고침</button>
+        </div>
 
       </section>
 
@@ -586,7 +673,7 @@ h1 {
         <div class="external-map-actions">
           <button id="kakaoMapButton" class="detail-map-button" type="button">상세지도 확인</button>
         </div>
-        <p id="selectedDistance" class="distance-line">투표소를 선택한 뒤 내 위치 또는 현장 지점을 찍으면 거리를 계산합니다.</p>
+        <div id="selectedDistance" class="distance-line" role="status" aria-live="polite">투표소를 선택한 뒤 내 위치 또는 현장 지점을 찍으면 거리를 계산합니다.</div>
         <div class="restriction-guide" aria-label="거리별 제한사항">
           <div><strong>50m</strong><span>출구조사 제한범위</span></div>
           <div><strong>100m</strong><span>투표참여 권유활동(현수막 포함) 제한 / 소란 행위 제한</span></div>
@@ -621,7 +708,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.8.0-data-file",
+    version: "0.9.0-field-tools",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
@@ -641,6 +728,7 @@ h1 {
     },
     defaultMapStyle: "osm",
     dataUrl: "data/polling-places.json",
+    dataAsOf: "2026. 9. 7.",
     mapStyles: {
       osm: {
         label: "기본 OSM 지도",
@@ -1096,7 +1184,8 @@ h1 {
   var initializing = false;
   var places = [];
   var currentFilters = {
-    district: "전체"
+    district: "전체",
+    type: "전체"
   };
 
   function initMap() {
@@ -1253,6 +1342,7 @@ h1 {
       return;
     }
     currentFilters.district = filters.district || "전체";
+    currentFilters.type = filters.type || "전체";
   }
 
   function setPlaces(nextPlaces, filters) {
@@ -1284,7 +1374,8 @@ h1 {
     var pickLocationHandler;
     var enginePlaces = [];
     var engineFilters = {
-      district: "전체"
+      district: "전체",
+      type: "전체"
     };
 
     function init() {
@@ -1335,10 +1426,13 @@ h1 {
     function setEngineFilters(filters) {
       if (!filters) return;
       engineFilters.district = filters.district || "전체";
+      engineFilters.type = filters.type || "전체";
     }
 
     function placeMatchesFilters(place) {
-      return engineFilters.district === "전체" || place.district === engineFilters.district;
+      var districtMatches = engineFilters.district === "전체" || place.district === engineFilters.district;
+      var typeMatches = engineFilters.type === "전체" || place.typeLabel === engineFilters.type;
+      return districtMatches && typeMatches;
     }
 
     function setEnginePlaces(nextPlaces, filters) {
@@ -1552,7 +1646,8 @@ h1 {
     var pickLocationHandler;
     var enginePlaces = [];
     var engineFilters = {
-      district: "전체"
+      district: "전체",
+      type: "전체"
     };
 
     function init() {
@@ -1575,10 +1670,13 @@ h1 {
     function setEngineFilters(filters) {
       if (!filters) return;
       engineFilters.district = filters.district || "전체";
+      engineFilters.type = filters.type || "전체";
     }
 
     function placeMatchesFilters(place) {
-      return engineFilters.district === "전체" || place.district === engineFilters.district;
+      var districtMatches = engineFilters.district === "전체" || place.district === engineFilters.district;
+      var typeMatches = engineFilters.type === "전체" || place.typeLabel === engineFilters.type;
+      return districtMatches && typeMatches;
     }
 
     function clearMarkers() {
@@ -1894,7 +1992,8 @@ h1 {
     userPosition: null,
     pickedPosition: null,
     measurementSource: "",
-    districtFilter: DISTRICT_ALL
+    districtFilter: DISTRICT_ALL,
+    typeFilter: "전체"
   };
 
   function byId(id) {
@@ -1912,6 +2011,10 @@ h1 {
     byId("districtSelect").addEventListener("change", function (event) {
       setDistrictFilter(event.target.value);
     });
+    byId("typeSelect").addEventListener("change", function (event) {
+      setTypeFilter(event.target.value);
+    });
+    byId("refreshDataButton").addEventListener("click", loadEmbeddedData);
     byId("locateButton").addEventListener("click", captureCurrentLocation);
     byId("manualLocationButton").addEventListener("click", enableManualLocation);
     byId("kakaoMapButton").addEventListener("click", openKakaoMap);
@@ -1930,7 +2033,7 @@ h1 {
     });
   }
 
-  function applyRows(rows) {
+  function applyRows(rows, sourceLabel) {
     if (!rows.length) {
       window.Suneum.map.showMapNotice("내장 투표소 자료를 찾지 못했습니다. 배포 파일을 확인하세요.");
       return;
@@ -1939,7 +2042,7 @@ h1 {
       fileName: "",
       startingRowNumber: 2
     });
-    applyDataset(result);
+    applyDataset(result, sourceLabel || "공용 좌표자료");
   }
 
   function loadEmbeddedData() {
@@ -1947,7 +2050,7 @@ h1 {
     var dataUrl = (window.Suneum.config && window.Suneum.config.dataUrl) || "data/polling-places.json";
 
     if (!window.fetch) {
-      applyRows(fallbackRows);
+      applyRows(fallbackRows, "내장 백업자료");
       return;
     }
 
@@ -1960,14 +2063,14 @@ h1 {
       })
       .then(function (rows) {
         if (!Array.isArray(rows) || !rows.length) throw new Error("데이터 파일이 비어 있습니다.");
-        applyRows(rows);
+        applyRows(rows, "공용 좌표자료");
       })
       .catch(function () {
-        applyRows(fallbackRows);
+        applyRows(fallbackRows, "내장 백업자료");
       });
   }
 
-  function applyDataset(result) {
+  function applyDataset(result, sourceLabel) {
     state.places = result.places;
     state.selectedPlace = null;
     state.pickedPosition = null;
@@ -1977,13 +2080,22 @@ h1 {
     hideBottomSheet();
     window.Suneum.map.clearCircles();
     window.Suneum.map.clearPickedPoint();
-    window.Suneum.map.setPlaces(state.places, { district: state.districtFilter });
+    window.Suneum.map.setPlaces(state.places, {
+      district: state.districtFilter,
+      type: state.typeFilter
+    });
+    renderDataStatus(sourceLabel);
 
     if (result.errors.length) {
       showErrors(result.errors.slice(0, 10));
     } else if (result.stats.missing && !result.stats.valid) {
       window.Suneum.map.showMapNotice("정상 좌표가 없습니다. 배포 파일의 내장 좌표자료를 확인하세요.");
     }
+  }
+
+  function renderDataStatus(sourceLabel) {
+    var date = (window.Suneum.config && window.Suneum.config.dataAsOf) || "확인 필요";
+    byId("dataStatus").textContent = "자료 기준일 " + date + " · " + (sourceLabel || "공용 좌표자료");
   }
 
   function showErrors(errors) {
@@ -2001,7 +2113,7 @@ h1 {
   function setDistrictFilter(district) {
     state.districtFilter = district || DISTRICT_ALL;
 
-    if (state.selectedPlace && !placeMatchesDistrict(state.selectedPlace)) {
+    if (state.selectedPlace && !placeMatchesFilters(state.selectedPlace)) {
       state.selectedPlace = null;
       state.pickedPosition = null;
       state.measurementSource = "";
@@ -2010,16 +2122,34 @@ h1 {
       window.Suneum.map.clearPickedPoint();
     }
 
-    window.Suneum.map.setFilter({ district: state.districtFilter });
+    window.Suneum.map.setFilter({ district: state.districtFilter, type: state.typeFilter });
     renderSearchResults(byId("searchInput").value);
   }
 
-  function placeMatchesDistrict(place) {
-    return state.districtFilter === DISTRICT_ALL || place.district === state.districtFilter;
+  function setTypeFilter(type) {
+    state.typeFilter = type || "전체";
+
+    if (state.selectedPlace && !placeMatchesFilters(state.selectedPlace)) {
+      state.selectedPlace = null;
+      state.pickedPosition = null;
+      state.measurementSource = "";
+      hideBottomSheet();
+      window.Suneum.map.clearCircles();
+      window.Suneum.map.clearPickedPoint();
+    }
+
+    window.Suneum.map.setFilter({ district: state.districtFilter, type: state.typeFilter });
+    renderSearchResults(byId("searchInput").value);
+  }
+
+  function placeMatchesFilters(place) {
+    var districtMatches = state.districtFilter === DISTRICT_ALL || place.district === state.districtFilter;
+    var typeMatches = state.typeFilter === "전체" || place.typeLabel === state.typeFilter;
+    return districtMatches && typeMatches;
   }
 
   function getVisiblePlaces() {
-    return state.places.filter(placeMatchesDistrict);
+    return state.places.filter(placeMatchesFilters);
   }
 
   function handleSearch(event) {
@@ -2216,6 +2346,7 @@ h1 {
     var line = byId("selectedDistance");
     var alert = byId("boundaryAlert");
     alert.classList.add("hidden");
+    line.classList.remove("ready");
 
     if (!state.selectedPlace || !state.selectedPlace.hasValidCoordinates) {
       line.textContent = "좌표 확인 필요: 배포 파일의 내장 좌표자료를 확인하세요.";
@@ -2230,6 +2361,7 @@ h1 {
 
     var result = buildDistanceResult(activePosition);
     line.textContent = result.main + " " + result.detail;
+    line.classList.add("ready");
 
     if (result.classified.nearBoundary) {
       alert.classList.remove("hidden");
@@ -2282,6 +2414,7 @@ h1 {
     init: init,
     selectPlace: selectPlace,
     setDistrictFilter: setDistrictFilter,
+    setTypeFilter: setTypeFilter,
     buildKakaoMapUrl: buildKakaoMapUrl,
     formatDistanceMainMessage: formatDistanceMainMessage,
     state: state
