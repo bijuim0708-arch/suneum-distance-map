@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 현장용 지도 v0.12.0</title>
+    <title>선이음-오십보백보 현장용 지도 v0.13.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -663,7 +663,7 @@ h1 {
       </main>
 
       <div class="floating-actions" aria-label="현장 기능">
-        <button id="locateButton" type="button">현재 내 위치 찍기</button>
+        <button id="locateButton" type="button">현재 위치로 이동</button>
         <button id="manualLocationButton" type="button">지점 찍기</button>
       </div>
 
@@ -681,7 +681,7 @@ h1 {
         <div class="external-map-actions">
           <button id="kakaoMapButton" class="detail-map-button" type="button">상세지도 확인</button>
         </div>
-        <div id="selectedDistance" class="distance-line" role="status" aria-live="polite">투표소를 선택한 뒤 내 위치 또는 현장 지점을 찍으면 거리를 계산합니다.</div>
+        <div id="selectedDistance" class="distance-line" role="status" aria-live="polite">투표소를 선택한 뒤 지점 찍기를 누르면 거리를 계산합니다.</div>
         <div class="restriction-guide" aria-label="거리별 제한사항">
           <div><strong>50m</strong><span>출구조사 제한범위</span></div>
           <div><strong>100m</strong><span>투표참여 권유활동(현수막 포함) 제한 / 소란 행위 제한</span></div>
@@ -716,7 +716,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.12.0-all-radii",
+    version: "0.13.0-location-pan",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
@@ -2213,7 +2213,7 @@ h1 {
       },
       function () {
         initialLocationResolved = true;
-        window.Suneum.map.showMapNotice("현재 위치를 확인하지 못해 대구 전체 지도로 시작합니다. 필요하면 '현재 내 위치 찍기'를 다시 눌러주세요.");
+        window.Suneum.map.showMapNotice("현재 위치를 확인하지 못해 대구 전체 지도로 시작합니다. 필요하면 '현재 위치로 이동'을 다시 눌러주세요.");
       },
       {
         enableHighAccuracy: true,
@@ -2380,8 +2380,7 @@ h1 {
     }
 
     initialLocationApplied = true;
-    window.Suneum.map.setUserLocation(state.userPosition, { follow: true });
-    window.Suneum.map.showAllRadii("both");
+    window.Suneum.map.focusUserLocation(state.userPosition);
   }
 
   function getVisiblePlaces() {
@@ -2477,11 +2476,9 @@ h1 {
   }
 
   function captureCurrentLocation() {
-    if (!ensureMeasurablePlace()) return;
-
     if (window.isSecureContext === false) {
       window.Suneum.map.showMapNotice(
-        "현재 주소가 file:// 또는 content:// 방식이면 휴대폰 GPS 권한이 제한될 수 있습니다. HTTPS 주소로 접속하거나 '지점 찍기'로 현장 위치를 지정하세요."
+        "현재 주소가 file:// 또는 content:// 방식이면 휴대폰 GPS 권한이 제한될 수 있습니다. HTTPS 주소로 접속하세요."
       );
       return;
     }
@@ -2495,7 +2492,8 @@ h1 {
     navigator.geolocation.getCurrentPosition(
       function (position) {
         state.userPosition = position;
-        setMeasuredPosition(position, "current");
+        window.Suneum.map.focusUserLocation(position);
+        window.Suneum.map.showMapNotice("현재 위치 주변으로 지도를 이동했습니다.");
       },
       function (error) {
         window.Suneum.map.showMapNotice(locationErrorMessage(error));
@@ -2593,7 +2591,7 @@ h1 {
 
     var activePosition = state.pickedPosition;
     if (!activePosition) {
-      line.textContent = "현재 내 위치 찍기 또는 지점 찍기를 누르면 선택한 투표소와의 거리를 표시합니다.";
+      line.textContent = "거리를 계산하려면 투표소를 선택한 뒤 지점 찍기를 누르세요.";
       return null;
     }
 
