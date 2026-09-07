@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 v0.5.2</title>
+    <title>선이음-오십보백보 현장용 지도 v0.7.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -434,12 +434,14 @@ h1 {
   justify-content: center;
   width: 28px;
   height: 28px;
+  padding: 0;
   border-radius: 999px;
   color: #ffffff;
   border: 3px solid #ffffff;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
   font-size: 13px;
   font-weight: 900;
+  line-height: 1;
 }
 
 .marker-pin.early {
@@ -452,6 +454,22 @@ h1 {
 
 .marker-pin.error {
   background: var(--red);
+}
+
+.point-marker {
+  width: 18px;
+  height: 18px;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.28);
+}
+
+.point-marker.user {
+  background: var(--red);
+}
+
+.point-marker.picked {
+  background: var(--orange);
 }
 
 .info-dialog {
@@ -510,7 +528,7 @@ h1 {
     <div class="app-shell">
       <header class="topbar">
         <div class="brand-block">
-          <p class="eyebrow">투표소 주변 50m·100m 제한거리 확인</p>
+          <p class="eyebrow">현장용 투표소 거리 확인</p>
           <div class="title-row">
             <h1>선이음-오십보백보</h1>
             <select id="districtSelect" class="district-select" aria-label="구군 선택">
@@ -603,11 +621,24 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.5.2-field-point",
+    version: "0.7.0-field-map",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
     districtOptions: ["전체", "중구", "동구", "서구", "남구", "북구", "수성구", "달서구", "달성군", "군위군"],
+    mapEngine: {
+      preferred: "kakao",
+      fallback: "osm",
+      kakaoLoadTimeoutMs: 5000
+    },
+    kakao: {
+      // 카카오 지도를 앱 안에서 바로 쓰려면 아래 빈 문자열에 JavaScript 키를 넣으세요.
+      // 비워두면 현장 안정성을 위해 기본 OSM 지도로 자동 표시됩니다.
+      javascriptKey: "",
+      sdkUrl: "https://dapi.kakao.com/v2/maps/sdk.js",
+      defaultLevel: 6,
+      selectedLevel: 2
+    },
     defaultMapStyle: "osm",
     mapStyles: {
       osm: {
@@ -1059,59 +1090,146 @@ h1 {
 (function () {
   window.Suneum = window.Suneum || {};
 
-  var map;
-  var markerLayer;
-  var activeTileLayer;
-  var selectedMarker;
-  var circle50;
-  var circle100;
-  var userMarker;
-  var userAccuracyCircle;
-  var pickedMarker;
-  var measureLine;
-  var pickLocationHandler;
+  var activeEngine = null;
+  var activeEngineName = "";
+  var initializing = false;
+  var places = [];
   var currentFilters = {
     district: "전체"
   };
-  var places = [];
 
   function initMap() {
-    if (!window.L) {
-      showMapNotice("지도 라이브러리를 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 열어주세요.");
-      return false;
+    if (initializing || activeEngine) return true;
+    initializing = true;
+
+    var kakaoKey = getKakaoJavaScriptKey();
+    if (shouldTryKakao(kakaoKey)) {
+      showMapNotice("카카오 지도를 불러오는 중입니다. 연결이 어려우면 기본 OSM 지도로 자동 전환합니다.");
+      loadKakaoSdk(kakaoKey)
+        .then(function () {
+          if (activeEngine) return;
+          try {
+            activateEngine(createKakaoEngine(), "kakao");
+          } catch (error) {
+            activateOsmFallback("카카오 지도 초기화에 실패해 기본 OSM 지도로 자동 전환했습니다. 거리 계산은 계속 사용할 수 있습니다.");
+          }
+        })
+        .catch(function () {
+          if (activeEngine) return;
+          activateOsmFallback("카카오 지도를 불러오지 못해 기본 OSM 지도로 자동 전환했습니다. 거리 계산은 계속 사용할 수 있습니다.");
+        });
+      return true;
     }
 
-    map = window.L.map("map", {
-      zoomControl: false,
-      preferCanvas: true
-    }).setView(window.Suneum.config.defaultCenter, window.Suneum.config.defaultZoom);
-
-    window.L.control.zoom({ position: "bottomright" }).addTo(map);
-    markerLayer = window.L.layerGroup().addTo(map);
-
-    setMapStyle(window.Suneum.config.defaultMapStyle || "osm");
+    activateOsmFallback("");
     return true;
   }
 
-  function setMapStyle(styleKey) {
-    if (!map) return;
-    var styles = window.Suneum.config.mapStyles || {};
-    var style = styles[styleKey] || styles.osm;
-    if (!style) return;
+  function shouldTryKakao(key) {
+    var mapEngine = window.Suneum.config.mapEngine || {};
+    return mapEngine.preferred === "kakao" && isUsableKakaoKey(key);
+  }
 
-    if (activeTileLayer) {
-      activeTileLayer.remove();
+  function getKakaoJavaScriptKey() {
+    var kakaoConfig = window.Suneum.config.kakao || {};
+    var candidates = [
+      kakaoConfig.javascriptKey,
+      readStoredValue("suneumKakaoJavascriptKey"),
+      readStoredValue("suneum_kakao_js_key"),
+      readStoredValue("kakaoJavascriptKey")
+    ];
+
+    for (var i = 0; i < candidates.length; i += 1) {
+      var key = String(candidates[i] || "").trim();
+      if (isUsableKakaoKey(key)) return key;
     }
+    return "";
+  }
 
-    activeTileLayer = window.L.tileLayer(style.url, {
-      maxZoom: 20,
-      attribution: style.attribution
-    });
+  function isUsableKakaoKey(key) {
+    var value = String(key || "").trim();
+    if (!value) return false;
+    if (value.indexOf("KAKAO_JAVASCRIPT_KEY") !== -1) return false;
+    if (value.indexOf("여기에") !== -1) return false;
+    return true;
+  }
 
-    activeTileLayer.on("tileerror", function () {
-      showMapNotice(window.Suneum.config.tileErrorMessage);
+  function readStoredValue(key) {
+    try {
+      return window.localStorage ? window.localStorage.getItem(key) : "";
+    } catch (error) {
+      return "";
+    }
+  }
+
+  function loadKakaoSdk(appKey) {
+    var kakaoConfig = window.Suneum.config.kakao || {};
+    var timeoutMs = (window.Suneum.config.mapEngine && window.Suneum.config.mapEngine.kakaoLoadTimeoutMs) || 5000;
+
+    return new Promise(function (resolve, reject) {
+      var finished = false;
+      var timer = window.setTimeout(function () {
+        finish(reject, new Error("Kakao 지도 SDK 연결 시간이 초과되었습니다."));
+      }, timeoutMs);
+
+      function finish(callback, value) {
+        if (finished) return;
+        finished = true;
+        window.clearTimeout(timer);
+        callback(value);
+      }
+
+      function resolveWhenReady() {
+        if (!window.kakao || !window.kakao.maps) {
+          finish(reject, new Error("Kakao 지도 SDK를 사용할 수 없습니다."));
+          return;
+        }
+
+        window.kakao.maps.load(function () {
+          finish(resolve);
+        });
+      }
+
+      if (window.kakao && window.kakao.maps) {
+        resolveWhenReady();
+        return;
+      }
+
+      var existing = document.getElementById("kakaoMapsSdk");
+      if (existing) existing.remove();
+
+      var script = document.createElement("script");
+      script.id = "kakaoMapsSdk";
+      script.async = true;
+      script.src =
+        (kakaoConfig.sdkUrl || "https://dapi.kakao.com/v2/maps/sdk.js") +
+        "?appkey=" +
+        encodeURIComponent(appKey) +
+        "&autoload=false";
+      script.onload = resolveWhenReady;
+      script.onerror = function () {
+        finish(reject, new Error("Kakao 지도 SDK 연결에 실패했습니다."));
+      };
+      document.head.appendChild(script);
     });
-    activeTileLayer.addTo(map);
+  }
+
+  function activateEngine(engine, engineName) {
+    if (!engine) throw new Error("지도 엔진을 만들 수 없습니다.");
+    engine.init();
+    activeEngine = engine;
+    activeEngineName = engineName;
+    activeEngine.setPlaces(places, currentFilters);
+  }
+
+  function activateOsmFallback(message) {
+    if (activeEngine) return;
+    try {
+      activateEngine(createLeafletEngine(), "osm");
+      if (message) showMapNotice(message);
+    } catch (error) {
+      showMapNotice("기본 OSM 지도 라이브러리도 불러오지 못했습니다. 인터넷 연결을 확인한 뒤 다시 열어주세요.");
+    }
   }
 
   function showMapNotice(message) {
@@ -1127,23 +1245,6 @@ h1 {
     notice.classList.add("hidden");
   }
 
-  function makeIcon(place) {
-    var markerType = place.hasValidCoordinates ? place.type : "error";
-    var label = markerType === "early" ? "사" : markerType === "election" ? "투" : "!";
-    return window.L.divIcon({
-      className: "",
-      html: '<div class="marker-pin ' + markerType + '">' + label + "</div>",
-      iconSize: [28, 28],
-      iconAnchor: [14, 14]
-    });
-  }
-
-  function setPlaces(nextPlaces, filters) {
-    places = nextPlaces || [];
-    setCurrentFilters(filters);
-    renderMarkers();
-  }
-
   function setCurrentFilters(filters) {
     if (!filters) return;
     if (typeof filters === "string") {
@@ -1153,84 +1254,596 @@ h1 {
     currentFilters.district = filters.district || "전체";
   }
 
-  function placeMatchesFilters(place) {
-    return currentFilters.district === "전체" || place.district === currentFilters.district;
-  }
-
-  function renderMarkers() {
-    if (!map || !markerLayer) return;
-    markerLayer.clearLayers();
-
-    var bounds = [];
-    places.forEach(function (place) {
-      if (!place.hasValidCoordinates) return;
-      if (!placeMatchesFilters(place)) return;
-
-      var marker = window.L.marker([place.lat, place.lng], {
-        icon: makeIcon(place),
-        title: place.name
-      });
-      marker.on("click", function () {
-        selectedMarker = marker;
-        window.Suneum.app.selectPlace(place, true);
-      });
-      marker.addTo(markerLayer);
-      bounds.push([place.lat, place.lng]);
-    });
-
-    if (bounds.length) {
-      map.fitBounds(bounds, { padding: [34, 34], maxZoom: 16 });
-      hideMapNotice();
-    } else if (places.length) {
-      showMapNotice("선택한 구군에 표시할 투표소가 없습니다.");
-    }
+  function setPlaces(nextPlaces, filters) {
+    places = nextPlaces || [];
+    setCurrentFilters(filters);
+    if (activeEngine) activeEngine.setPlaces(places, currentFilters);
   }
 
   function setFilter(filters) {
     setCurrentFilters(filters);
-    renderMarkers();
+    if (activeEngine) activeEngine.setFilter(currentFilters);
   }
 
-  function focusPlace(place) {
-    if (!map || !place || !place.hasValidCoordinates) return;
-    map.setView([place.lat, place.lng], window.Suneum.config.selectedZoom);
+  function callEngine(methodName, args) {
+    if (!activeEngine || !activeEngine[methodName]) return null;
+    return activeEngine[methodName].apply(activeEngine, args || []);
   }
 
-  function clearCircles() {
-    if (!map) return;
-    if (circle50) circle50.remove();
-    if (circle100) circle100.remove();
-    circle50 = null;
-    circle100 = null;
-  }
+  function createLeafletEngine() {
+    var map;
+    var markerLayer;
+    var activeTileLayer;
+    var circle50;
+    var circle100;
+    var userMarker;
+    var userAccuracyCircle;
+    var pickedMarker;
+    var measureLine;
+    var pickLocationHandler;
+    var enginePlaces = [];
+    var engineFilters = {
+      district: "전체"
+    };
 
-  function showRadius(place, radiusMode) {
-    if (!map || !place || !place.hasValidCoordinates) return;
-    clearCircles();
-    var center = [place.lat, place.lng];
+    function init() {
+      if (!window.L) throw new Error("Leaflet을 불러오지 못했습니다.");
 
-    if (radiusMode === "50" || radiusMode === "both") {
-      circle50 = window.L.circle(center, {
-        radius: 50,
-        color: "#1d4ed8",
-        weight: 3,
-        fillColor: "#60a5fa",
-        fillOpacity: 0.16
-      }).addTo(map);
+      map = window.L.map("map", {
+        zoomControl: false,
+        preferCanvas: true
+      }).setView(window.Suneum.config.defaultCenter, window.Suneum.config.defaultZoom);
+
+      window.L.control.zoom({ position: "bottomright" }).addTo(map);
+      markerLayer = window.L.layerGroup().addTo(map);
+      setMapStyle(window.Suneum.config.defaultMapStyle || "osm");
     }
 
-    if (radiusMode === "100" || radiusMode === "both") {
-      circle100 = window.L.circle(center, {
-        radius: 100,
-        color: "#047857",
-        weight: 3,
-        fillColor: "#34d399",
-        fillOpacity: 0.1
-      }).addTo(map);
+    function setMapStyle(styleKey) {
+      if (!map) return;
+      var styles = window.Suneum.config.mapStyles || {};
+      var style = styles[styleKey] || styles.osm;
+      if (!style) return;
+
+      if (activeTileLayer) {
+        activeTileLayer.remove();
+      }
+
+      activeTileLayer = window.L.tileLayer(style.url, {
+        maxZoom: 20,
+        attribution: style.attribution
+      });
+
+      activeTileLayer.on("tileerror", function () {
+        showMapNotice(window.Suneum.config.tileErrorMessage);
+      });
+      activeTileLayer.addTo(map);
     }
 
-    map.setView(center, window.Suneum.config.selectedZoom);
-    showMapNotice(restrictionMessage(radiusMode));
+    function makeIcon(place) {
+      var markerType = place.hasValidCoordinates ? place.type : "error";
+      var label = markerType === "early" ? "사" : markerType === "election" ? "투" : "!";
+      return window.L.divIcon({
+        className: "",
+        html: '<div class="marker-pin ' + markerType + '">' + label + "</div>",
+        iconSize: [28, 28],
+        iconAnchor: [14, 14]
+      });
+    }
+
+    function setEngineFilters(filters) {
+      if (!filters) return;
+      engineFilters.district = filters.district || "전체";
+    }
+
+    function placeMatchesFilters(place) {
+      return engineFilters.district === "전체" || place.district === engineFilters.district;
+    }
+
+    function setEnginePlaces(nextPlaces, filters) {
+      enginePlaces = nextPlaces || [];
+      setEngineFilters(filters);
+      renderMarkers();
+    }
+
+    function setFilter(filters) {
+      setEngineFilters(filters);
+      renderMarkers();
+    }
+
+    function renderMarkers() {
+      if (!map || !markerLayer) return;
+      markerLayer.clearLayers();
+
+      var bounds = [];
+      enginePlaces.forEach(function (place) {
+        if (!place.hasValidCoordinates) return;
+        if (!placeMatchesFilters(place)) return;
+
+        var marker = window.L.marker([place.lat, place.lng], {
+          icon: makeIcon(place),
+          title: place.name
+        });
+        marker.on("click", function () {
+          window.Suneum.app.selectPlace(place, true);
+        });
+        marker.addTo(markerLayer);
+        bounds.push([place.lat, place.lng]);
+      });
+
+      if (bounds.length) {
+        map.fitBounds(bounds, { padding: [34, 34], maxZoom: 16 });
+        hideMapNotice();
+      } else if (enginePlaces.length) {
+        showMapNotice("선택한 구군에 표시할 투표소가 없습니다.");
+      }
+    }
+
+    function focusPlace(place) {
+      if (!map || !place || !place.hasValidCoordinates) return;
+      map.setView([place.lat, place.lng], window.Suneum.config.selectedZoom);
+    }
+
+    function clearCircles() {
+      if (!map) return;
+      if (circle50) circle50.remove();
+      if (circle100) circle100.remove();
+      circle50 = null;
+      circle100 = null;
+    }
+
+    function showRadius(place, radiusMode) {
+      if (!map || !place || !place.hasValidCoordinates) return;
+      clearCircles();
+      var center = [place.lat, place.lng];
+
+      if (radiusMode === "50" || radiusMode === "both") {
+        circle50 = window.L.circle(center, {
+          radius: 50,
+          color: "#1d4ed8",
+          weight: 3,
+          fillColor: "#60a5fa",
+          fillOpacity: 0.16
+        }).addTo(map);
+      }
+
+      if (radiusMode === "100" || radiusMode === "both") {
+        circle100 = window.L.circle(center, {
+          radius: 100,
+          color: "#047857",
+          weight: 3,
+          fillColor: "#34d399",
+          fillOpacity: 0.1
+        }).addTo(map);
+      }
+
+      map.setView(center, window.Suneum.config.selectedZoom);
+      showMapNotice(restrictionMessage(radiusMode));
+    }
+
+    function setUserLocation(position, options) {
+      if (!map || !position) return;
+      var lat = position.coords.latitude;
+      var lng = position.coords.longitude;
+      var accuracy = position.coords.accuracy;
+      var center = [lat, lng];
+      var shouldFollow = Boolean(options && options.follow);
+
+      if (userMarker) userMarker.remove();
+      if (userAccuracyCircle) userAccuracyCircle.remove();
+
+      userMarker = window.L.circleMarker(center, {
+        radius: 8,
+        color: "#ffffff",
+        weight: 3,
+        fillColor: "#dc2626",
+        fillOpacity: 1
+      }).addTo(map);
+
+      if (Number.isFinite(accuracy)) {
+        userAccuracyCircle = window.L.circle(center, {
+          radius: accuracy,
+          color: "#dc2626",
+          weight: 1,
+          fillColor: "#dc2626",
+          fillOpacity: 0.08
+        }).addTo(map);
+      }
+
+      if (shouldFollow) {
+        map.setView(center, Math.max(map.getZoom(), 17));
+      }
+    }
+
+    function focusUserLocation(position) {
+      if (!map || !position) return;
+      map.setView([position.coords.latitude, position.coords.longitude], Math.max(map.getZoom(), 17));
+    }
+
+    function setUserPoint(lat, lng, accuracy) {
+      setUserLocation({
+        coords: {
+          latitude: lat,
+          longitude: lng,
+          accuracy: Number.isFinite(accuracy) ? accuracy : null
+        }
+      }, { follow: true });
+    }
+
+    function clearPickedPoint() {
+      if (pickedMarker) pickedMarker.remove();
+      if (measureLine) measureLine.remove();
+      pickedMarker = null;
+      measureLine = null;
+    }
+
+    function setPickedPoint(lat, lng, place) {
+      if (!map) return;
+      clearPickedPoint();
+
+      var point = [lat, lng];
+      pickedMarker = window.L.circleMarker(point, {
+        radius: 8,
+        color: "#ffffff",
+        weight: 3,
+        fillColor: "#d97706",
+        fillOpacity: 1
+      }).addTo(map);
+
+      if (place && place.hasValidCoordinates) {
+        var placePoint = [place.lat, place.lng];
+        measureLine = window.L.polyline([placePoint, point], {
+          color: "#d97706",
+          weight: 3,
+          dashArray: "6 7"
+        }).addTo(map);
+        map.fitBounds([placePoint, point], { padding: [54, 54], maxZoom: 18 });
+      } else {
+        map.setView(point, Math.max(map.getZoom(), 17));
+      }
+    }
+
+    function enableUserPointPicking(callback) {
+      if (!map) return;
+      if (pickLocationHandler) {
+        map.off("click", pickLocationHandler);
+      }
+
+      var mapElement = document.getElementById("map");
+      if (mapElement) mapElement.classList.add("picking");
+      showMapNotice("지도에서 현장 단속 지점을 한 번 누르세요. 선택한 투표소와 찍은 지점 사이의 거리를 계산합니다.");
+      pickLocationHandler = function (event) {
+        map.off("click", pickLocationHandler);
+        pickLocationHandler = null;
+        if (mapElement) mapElement.classList.remove("picking");
+        callback(event.latlng.lat, event.latlng.lng);
+      };
+      map.on("click", pickLocationHandler);
+    }
+
+    return {
+      init: init,
+      isReady: function () { return Boolean(map); },
+      setPlaces: setEnginePlaces,
+      setFilter: setFilter,
+      setMapStyle: setMapStyle,
+      focusPlace: focusPlace,
+      showRadius: showRadius,
+      clearCircles: clearCircles,
+      setUserLocation: setUserLocation,
+      focusUserLocation: focusUserLocation,
+      setUserPoint: setUserPoint,
+      setPickedPoint: setPickedPoint,
+      clearPickedPoint: clearPickedPoint,
+      enableUserPointPicking: enableUserPointPicking
+    };
+  }
+
+  function createKakaoEngine() {
+    var map;
+    var markers = [];
+    var circle50;
+    var circle100;
+    var userMarker;
+    var userAccuracyCircle;
+    var pickedMarker;
+    var measureLine;
+    var pickLocationHandler;
+    var enginePlaces = [];
+    var engineFilters = {
+      district: "전체"
+    };
+
+    function init() {
+      if (!window.kakao || !window.kakao.maps) throw new Error("Kakao 지도를 불러오지 못했습니다.");
+      var kakaoConfig = window.Suneum.config.kakao || {};
+      var center = toLatLng(window.Suneum.config.defaultCenter[0], window.Suneum.config.defaultCenter[1]);
+      map = new window.kakao.maps.Map(document.getElementById("map"), {
+        center: center,
+        level: kakaoConfig.defaultLevel || 6
+      });
+
+      var zoomControl = new window.kakao.maps.ZoomControl();
+      map.addControl(zoomControl, window.kakao.maps.ControlPosition.RIGHT);
+    }
+
+    function toLatLng(lat, lng) {
+      return new window.kakao.maps.LatLng(Number(lat), Number(lng));
+    }
+
+    function setEngineFilters(filters) {
+      if (!filters) return;
+      engineFilters.district = filters.district || "전체";
+    }
+
+    function placeMatchesFilters(place) {
+      return engineFilters.district === "전체" || place.district === engineFilters.district;
+    }
+
+    function clearMarkers() {
+      markers.forEach(function (marker) {
+        marker.setMap(null);
+      });
+      markers = [];
+    }
+
+    function markerLabel(place) {
+      if (!place.hasValidCoordinates) return "!";
+      return place.type === "early" ? "사" : "투";
+    }
+
+    function markerClass(place) {
+      if (!place.hasValidCoordinates) return "error";
+      return place.type === "early" ? "early" : "election";
+    }
+
+    function makePlaceMarker(place) {
+      var button = document.createElement("button");
+      button.type = "button";
+      button.className = "marker-pin " + markerClass(place);
+      button.textContent = markerLabel(place);
+      button.setAttribute("aria-label", place.name || "투표소");
+      button.addEventListener("click", function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.Suneum.app.selectPlace(place, true);
+      });
+
+      return new window.kakao.maps.CustomOverlay({
+        position: toLatLng(place.lat, place.lng),
+        content: button,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+        zIndex: 10
+      });
+    }
+
+    function setEnginePlaces(nextPlaces, filters) {
+      enginePlaces = nextPlaces || [];
+      setEngineFilters(filters);
+      renderMarkers();
+    }
+
+    function setFilter(filters) {
+      setEngineFilters(filters);
+      renderMarkers();
+    }
+
+    function renderMarkers() {
+      if (!map) return;
+      clearMarkers();
+
+      var bounds = new window.kakao.maps.LatLngBounds();
+      var count = 0;
+
+      enginePlaces.forEach(function (place) {
+        if (!place.hasValidCoordinates) return;
+        if (!placeMatchesFilters(place)) return;
+
+        var marker = makePlaceMarker(place);
+        marker.setMap(map);
+        markers.push(marker);
+        bounds.extend(toLatLng(place.lat, place.lng));
+        count += 1;
+      });
+
+      if (count > 0) {
+        map.setBounds(bounds);
+        hideMapNotice();
+      } else if (enginePlaces.length) {
+        showMapNotice("선택한 구군에 표시할 투표소가 없습니다.");
+      }
+    }
+
+    function selectedLevel() {
+      return (window.Suneum.config.kakao && window.Suneum.config.kakao.selectedLevel) || 2;
+    }
+
+    function focusPlace(place) {
+      if (!map || !place || !place.hasValidCoordinates) return;
+      map.setCenter(toLatLng(place.lat, place.lng));
+      map.setLevel(selectedLevel());
+    }
+
+    function clearCircles() {
+      if (circle50) circle50.setMap(null);
+      if (circle100) circle100.setMap(null);
+      circle50 = null;
+      circle100 = null;
+    }
+
+    function showRadius(place, radiusMode) {
+      if (!map || !place || !place.hasValidCoordinates) return;
+      clearCircles();
+      var center = toLatLng(place.lat, place.lng);
+
+      if (radiusMode === "50" || radiusMode === "both") {
+        circle50 = new window.kakao.maps.Circle({
+          center: center,
+          radius: 50,
+          strokeWeight: 3,
+          strokeColor: "#1d4ed8",
+          strokeOpacity: 0.95,
+          fillColor: "#60a5fa",
+          fillOpacity: 0.16
+        });
+        circle50.setMap(map);
+      }
+
+      if (radiusMode === "100" || radiusMode === "both") {
+        circle100 = new window.kakao.maps.Circle({
+          center: center,
+          radius: 100,
+          strokeWeight: 3,
+          strokeColor: "#047857",
+          strokeOpacity: 0.95,
+          fillColor: "#34d399",
+          fillOpacity: 0.1
+        });
+        circle100.setMap(map);
+      }
+
+      map.setCenter(center);
+      map.setLevel(selectedLevel());
+      showMapNotice(restrictionMessage(radiusMode));
+    }
+
+    function makePointMarker(lat, lng, type) {
+      var point = document.createElement("div");
+      point.className = "point-marker " + type;
+      return new window.kakao.maps.CustomOverlay({
+        position: toLatLng(lat, lng),
+        content: point,
+        xAnchor: 0.5,
+        yAnchor: 0.5,
+        zIndex: 20
+      });
+    }
+
+    function setUserLocation(position, options) {
+      if (!map || !position) return;
+      var lat = position.coords.latitude;
+      var lng = position.coords.longitude;
+      var accuracy = position.coords.accuracy;
+      var shouldFollow = Boolean(options && options.follow);
+
+      if (userMarker) userMarker.setMap(null);
+      if (userAccuracyCircle) userAccuracyCircle.setMap(null);
+
+      userMarker = makePointMarker(lat, lng, "user");
+      userMarker.setMap(map);
+
+      if (Number.isFinite(accuracy)) {
+        userAccuracyCircle = new window.kakao.maps.Circle({
+          center: toLatLng(lat, lng),
+          radius: accuracy,
+          strokeWeight: 1,
+          strokeColor: "#dc2626",
+          strokeOpacity: 0.65,
+          fillColor: "#dc2626",
+          fillOpacity: 0.08
+        });
+        userAccuracyCircle.setMap(map);
+      }
+
+      if (shouldFollow) {
+        map.setCenter(toLatLng(lat, lng));
+        map.setLevel(Math.min(map.getLevel(), selectedLevel()));
+      }
+    }
+
+    function focusUserLocation(position) {
+      if (!map || !position) return;
+      map.setCenter(toLatLng(position.coords.latitude, position.coords.longitude));
+      map.setLevel(Math.min(map.getLevel(), selectedLevel()));
+    }
+
+    function setUserPoint(lat, lng, accuracy) {
+      setUserLocation({
+        coords: {
+          latitude: lat,
+          longitude: lng,
+          accuracy: Number.isFinite(accuracy) ? accuracy : null
+        }
+      }, { follow: true });
+    }
+
+    function clearPickedPoint() {
+      if (pickedMarker) pickedMarker.setMap(null);
+      if (measureLine) measureLine.setMap(null);
+      pickedMarker = null;
+      measureLine = null;
+    }
+
+    function fitPlaceAndPoint(place, lat, lng) {
+      var bounds = new window.kakao.maps.LatLngBounds();
+      bounds.extend(toLatLng(place.lat, place.lng));
+      bounds.extend(toLatLng(lat, lng));
+      map.setBounds(bounds);
+      window.setTimeout(function () {
+        if (map && map.getLevel() < selectedLevel()) {
+          map.setLevel(selectedLevel());
+        }
+      }, 0);
+    }
+
+    function setPickedPoint(lat, lng, place) {
+      if (!map) return;
+      clearPickedPoint();
+
+      pickedMarker = makePointMarker(lat, lng, "picked");
+      pickedMarker.setMap(map);
+
+      if (place && place.hasValidCoordinates) {
+        measureLine = new window.kakao.maps.Polyline({
+          path: [toLatLng(place.lat, place.lng), toLatLng(lat, lng)],
+          strokeWeight: 3,
+          strokeColor: "#d97706",
+          strokeOpacity: 1,
+          strokeStyle: "dash"
+        });
+        measureLine.setMap(map);
+        fitPlaceAndPoint(place, lat, lng);
+      } else {
+        map.setCenter(toLatLng(lat, lng));
+        map.setLevel(selectedLevel());
+      }
+    }
+
+    function enableUserPointPicking(callback) {
+      if (!map) return;
+      if (pickLocationHandler) {
+        window.kakao.maps.event.removeListener(map, "click", pickLocationHandler);
+      }
+
+      var mapElement = document.getElementById("map");
+      if (mapElement) mapElement.classList.add("picking");
+      showMapNotice("지도에서 현장 단속 지점을 한 번 누르세요. 선택한 투표소와 찍은 지점 사이의 거리를 계산합니다.");
+      pickLocationHandler = function (event) {
+        window.kakao.maps.event.removeListener(map, "click", pickLocationHandler);
+        pickLocationHandler = null;
+        if (mapElement) mapElement.classList.remove("picking");
+        callback(event.latLng.getLat(), event.latLng.getLng());
+      };
+      window.kakao.maps.event.addListener(map, "click", pickLocationHandler);
+    }
+
+    return {
+      init: init,
+      isReady: function () { return Boolean(map); },
+      setPlaces: setEnginePlaces,
+      setFilter: setFilter,
+      setMapStyle: function () {},
+      focusPlace: focusPlace,
+      showRadius: showRadius,
+      clearCircles: clearCircles,
+      setUserLocation: setUserLocation,
+      focusUserLocation: focusUserLocation,
+      setUserPoint: setUserPoint,
+      setPickedPoint: setPickedPoint,
+      clearPickedPoint: clearPickedPoint,
+      enableUserPointPicking: enableUserPointPicking
+    };
   }
 
   function restrictionMessage(radiusMode) {
@@ -1239,125 +1852,32 @@ h1 {
     return "50m: 출구조사 제한범위 / 100m: 투표참여 권유활동(현수막 포함) 제한 및 소란 행위 제한 범위입니다.";
   }
 
-  function setUserLocation(position, options) {
-    if (!map || !position) return;
-    var lat = position.coords.latitude;
-    var lng = position.coords.longitude;
-    var accuracy = position.coords.accuracy;
-    var center = [lat, lng];
-    var shouldFollow = Boolean(options && options.follow);
-
-    if (userMarker) userMarker.remove();
-    if (userAccuracyCircle) userAccuracyCircle.remove();
-
-    userMarker = window.L.circleMarker(center, {
-      radius: 8,
-      color: "#ffffff",
-      weight: 3,
-      fillColor: "#dc2626",
-      fillOpacity: 1
-    }).addTo(map);
-
-    if (Number.isFinite(accuracy)) {
-      userAccuracyCircle = window.L.circle(center, {
-        radius: accuracy,
-        color: "#dc2626",
-        weight: 1,
-        fillColor: "#dc2626",
-        fillOpacity: 0.08
-      }).addTo(map);
-    }
-
-    if (shouldFollow) {
-      map.setView(center, Math.max(map.getZoom(), 17));
-    }
-  }
-
-  function focusUserLocation(position) {
-    if (!map || !position) return;
-    map.setView([position.coords.latitude, position.coords.longitude], Math.max(map.getZoom(), 17));
-  }
-
-  function setUserPoint(lat, lng, accuracy) {
-    setUserLocation({
-      coords: {
-        latitude: lat,
-        longitude: lng,
-        accuracy: Number.isFinite(accuracy) ? accuracy : null
-      }
-    }, { follow: true });
-  }
-
-  function clearPickedPoint() {
-    if (pickedMarker) pickedMarker.remove();
-    if (measureLine) measureLine.remove();
-    pickedMarker = null;
-    measureLine = null;
-  }
-
-  function setPickedPoint(lat, lng, place) {
-    if (!map) return;
-    clearPickedPoint();
-
-    var point = [lat, lng];
-    pickedMarker = window.L.circleMarker(point, {
-      radius: 8,
-      color: "#ffffff",
-      weight: 3,
-      fillColor: "#d97706",
-      fillOpacity: 1
-    }).addTo(map);
-
-    if (place && place.hasValidCoordinates) {
-      var placePoint = [place.lat, place.lng];
-      measureLine = window.L.polyline([placePoint, point], {
-        color: "#d97706",
-        weight: 3,
-        dashArray: "6 7"
-      }).addTo(map);
-      map.fitBounds([placePoint, point], { padding: [54, 54], maxZoom: 18 });
-    } else {
-      map.setView(point, Math.max(map.getZoom(), 17));
-    }
-  }
-
-  function enableUserPointPicking(callback) {
-    if (!map) return;
-    if (pickLocationHandler) {
-      map.off("click", pickLocationHandler);
-    }
-
-    var mapElement = document.getElementById("map");
-    if (mapElement) mapElement.classList.add("picking");
-    showMapNotice("지도에서 현장 단속 지점을 한 번 누르세요. 선택한 투표소와 찍은 지점 사이의 거리를 계산합니다.");
-    pickLocationHandler = function (event) {
-      map.off("click", pickLocationHandler);
-      pickLocationHandler = null;
-      if (mapElement) mapElement.classList.remove("picking");
-      callback(event.latlng.lat, event.latlng.lng);
-    };
-    map.on("click", pickLocationHandler);
-  }
-
   function isReady() {
-    return Boolean(map);
+    return Boolean(activeEngine && activeEngine.isReady());
   }
 
   window.Suneum.map = {
     initMap: initMap,
     isReady: isReady,
+    getEngineName: function () { return activeEngineName; },
     setPlaces: setPlaces,
     setFilter: setFilter,
-    setMapStyle: setMapStyle,
-    focusPlace: focusPlace,
-    showRadius: showRadius,
-    clearCircles: clearCircles,
-    setUserLocation: setUserLocation,
-    focusUserLocation: focusUserLocation,
-    setUserPoint: setUserPoint,
-    setPickedPoint: setPickedPoint,
-    clearPickedPoint: clearPickedPoint,
-    enableUserPointPicking: enableUserPointPicking,
+    setMapStyle: function (styleKey) { return callEngine("setMapStyle", [styleKey]); },
+    focusPlace: function (place) { return callEngine("focusPlace", [place]); },
+    showRadius: function (place, radiusMode) { return callEngine("showRadius", [place, radiusMode]); },
+    clearCircles: function () { return callEngine("clearCircles"); },
+    setUserLocation: function (position, options) { return callEngine("setUserLocation", [position, options]); },
+    focusUserLocation: function (position) { return callEngine("focusUserLocation", [position]); },
+    setUserPoint: function (lat, lng, accuracy) { return callEngine("setUserPoint", [lat, lng, accuracy]); },
+    setPickedPoint: function (lat, lng, place) { return callEngine("setPickedPoint", [lat, lng, place]); },
+    clearPickedPoint: function () { return callEngine("clearPickedPoint"); },
+    enableUserPointPicking: function (callback) {
+      if (!activeEngine) {
+        showMapNotice("지도를 준비하는 중입니다. 잠시 뒤 다시 눌러주세요.");
+        return null;
+      }
+      return callEngine("enableUserPointPicking", [callback]);
+    },
     showMapNotice: showMapNotice
   };
 })();
