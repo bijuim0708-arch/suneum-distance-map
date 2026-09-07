@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 현장용 지도 v0.10.0</title>
+    <title>선이음-오십보백보 현장용 지도 v0.11.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -708,7 +708,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.10.0-current-location",
+    version: "0.11.0-initial-location",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
@@ -1999,6 +1999,9 @@ h1 {
     districtFilter: DISTRICT_ALL,
     typeFilter: "전체"
   };
+  var initialLocationResolved = false;
+  var initialLocationApplied = false;
+  var initialLocationRetryCount = 0;
 
   function byId(id) {
     return document.getElementById(id);
@@ -2007,7 +2010,33 @@ h1 {
   function init() {
     window.Suneum.map.initMap();
     bindEvents();
+    requestInitialLocation();
     loadEmbeddedData();
+  }
+
+  function requestInitialLocation() {
+    if (window.isSecureContext === false || !navigator.geolocation) {
+      initialLocationResolved = true;
+      return;
+    }
+
+    window.Suneum.map.showMapNotice("현재 위치 권한을 확인하고 있습니다. 권한 요청이 뜨면 허용을 눌러주세요.");
+    navigator.geolocation.getCurrentPosition(
+      function (position) {
+        state.userPosition = position;
+        initialLocationResolved = true;
+        applyInitialLocation();
+      },
+      function () {
+        initialLocationResolved = true;
+        window.Suneum.map.showMapNotice("현재 위치를 확인하지 못해 대구 전체 지도로 시작합니다. 필요하면 '현재 내 위치 찍기'를 다시 눌러주세요.");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 0
+      }
+    );
   }
 
   function bindEvents() {
@@ -2089,6 +2118,7 @@ h1 {
       type: state.typeFilter
     });
     renderDataStatus(sourceLabel);
+    applyInitialLocation();
 
     if (result.errors.length) {
       showErrors(result.errors.slice(0, 10));
@@ -2150,6 +2180,49 @@ h1 {
     var districtMatches = state.districtFilter === DISTRICT_ALL || place.district === state.districtFilter;
     var typeMatches = state.typeFilter === "전체" || place.typeLabel === state.typeFilter;
     return districtMatches && typeMatches;
+  }
+
+  function findNearestPlace(position) {
+    if (!position || !position.coords) return null;
+    var target = {
+      lat: position.coords.latitude,
+      lng: position.coords.longitude
+    };
+    var nearest = getVisiblePlaces()
+      .filter(function (place) { return place.hasValidCoordinates; })
+      .reduce(function (nearest, place) {
+        var distance = window.Suneum.distance.haversineMeters(target, {
+          lat: place.lat,
+          lng: place.lng
+        });
+        if (!nearest || distance < nearest.distance) {
+          return { place: place, distance: distance };
+        }
+        return nearest;
+      }, null);
+    return nearest ? nearest.place : null;
+  }
+
+  function applyInitialLocation() {
+    if (initialLocationApplied || !initialLocationResolved || !state.userPosition || !state.places.length) {
+      return;
+    }
+
+    if (!window.Suneum.map.isReady()) {
+      if (initialLocationRetryCount < 50) {
+        initialLocationRetryCount += 1;
+        window.setTimeout(applyInitialLocation, 100);
+      }
+      return;
+    }
+
+    var nearestPlace = findNearestPlace(state.userPosition);
+    if (!nearestPlace) return;
+
+    initialLocationApplied = true;
+    selectPlace(nearestPlace, false);
+    window.Suneum.map.showRadius(nearestPlace, "both");
+    setMeasuredPosition(state.userPosition, "current");
   }
 
   function getVisiblePlaces() {
