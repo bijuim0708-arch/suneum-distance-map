@@ -202,29 +202,10 @@ h1 {
 .filter-row {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
-  min-height: 36px;
-  padding: 5px 8px;
-  border: 1px solid rgba(203, 213, 225, 0.95);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 4px 12px rgba(20, 32, 54, 0.1);
-}
-
-.filter-label {
-  color: #475569;
-  font-size: 12px;
-  font-weight: 850;
-  white-space: nowrap;
-}
-
-.filter-row .type-select {
-  flex: 0 0 auto;
-  height: 30px;
-  min-width: 116px;
-  padding: 0 22px 0 8px;
-  border-radius: 6px;
-  font-size: 12px;
+  min-height: 30px;
+  padding: 0;
 }
 
 .data-status {
@@ -648,7 +629,6 @@ h1 {
             </select>
           </div>
         </div>
-        <button id="infoButton" class="icon-button" type="button" aria-label="업무 참고 안내">?</button>
       </header>
 
       <section class="control-panel" aria-label="투표소 데이터 및 검색">
@@ -663,7 +643,6 @@ h1 {
           <div id="searchResults" class="search-results hidden"></div>
         </div>
         <div class="filter-row">
-          <span id="dataStatus" class="data-status">자료 기준일 확인 중...</span>
           <button id="refreshDataButton" class="refresh-data-button" type="button">자료 새로고침</button>
         </div>
 
@@ -707,18 +686,6 @@ h1 {
         </div>
       </section>
 
-      <dialog id="infoDialog" class="info-dialog">
-        <form method="dialog">
-          <h2>업무 참고용 안내</h2>
-          <p>
-            본 프로그램의 거리 표시는 등록된 투표소 좌표와 GPS 또는 지도에서 찍은 지점을 기반으로 산출한 참고자료입니다.
-            지도상 거리와 실제 현장 측정값에는 차이가 있을 수 있으며, 특히 거리 제한 경계 부근에서는
-            현장 확인 및 관계 법령에 따른 별도 판단이 필요합니다.
-          </p>
-          <p>본 프로그램은 특정 행위의 공직선거법 위반 여부를 자동으로 판단하지 않습니다.</p>
-          <button class="primary-wide" type="submit">확인</button>
-        </form>
-      </dialog>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -748,7 +715,6 @@ h1 {
     },
     defaultMapStyle: "osm",
     dataUrl: "data/polling-places.json",
-    dataAsOf: "2026. 9. 7.",
     mapStyles: {
       osm: {
         label: "기본 OSM 지도",
@@ -2251,10 +2217,6 @@ h1 {
     byId("focusSelectedButton").addEventListener("click", function () {
       window.Suneum.map.focusPlace(state.selectedPlace);
     });
-    byId("infoButton").addEventListener("click", function () {
-      byId("infoDialog").showModal();
-    });
-
     Array.prototype.forEach.call(document.querySelectorAll("[data-radius]"), function (button) {
       button.addEventListener("click", function () {
         window.Suneum.map.showRadius(state.selectedPlace, button.dataset.radius);
@@ -2313,7 +2275,6 @@ h1 {
       district: state.districtFilter,
       type: state.typeFilter
     });
-    renderDataStatus(sourceLabel);
     applyInitialLocation();
 
     if (result.errors.length) {
@@ -2321,11 +2282,6 @@ h1 {
     } else if (result.stats.missing && !result.stats.valid) {
       window.Suneum.map.showMapNotice("정상 좌표가 없습니다. 배포 파일의 내장 좌표자료를 확인하세요.");
     }
-  }
-
-  function renderDataStatus(sourceLabel) {
-    var date = (window.Suneum.config && window.Suneum.config.dataAsOf) || "확인 필요";
-    byId("dataStatus").textContent = "자료 기준일 " + date + " · " + (sourceLabel || "공용 좌표자료");
   }
 
   function showErrors(errors) {
