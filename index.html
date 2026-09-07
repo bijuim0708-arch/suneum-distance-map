@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 현장용 지도 v0.15.0</title>
+    <title>선이음-오십보백보 현장용 지도 v0.16.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -118,6 +118,10 @@ h1 {
 }
 
 @media (max-width: 360px) {
+  .title-row {
+    gap: 5px;
+  }
+
   h1 {
     font-size: 18px;
   }
@@ -156,6 +160,11 @@ h1 {
   color: inherit;
   background: rgba(255, 255, 255, 0.18);
   font-weight: 800;
+}
+
+.search-toggle {
+  flex: 0 0 auto;
+  font-size: 18px;
 }
 
 .control-panel {
@@ -597,9 +606,10 @@ h1 {
             </select>
           </div>
         </div>
+        <button id="searchToggleButton" class="icon-button search-toggle" type="button" aria-label="투표소 검색 열기" aria-expanded="false">⌕</button>
       </header>
 
-      <section class="control-panel" aria-label="투표소 데이터 및 검색">
+      <section id="searchPanel" class="control-panel hidden" aria-label="투표소 데이터 및 검색">
         <div class="search-wrap">
           <input
             id="searchInput"
@@ -659,7 +669,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.15.0-map-first",
+    version: "0.16.0-map-first-search-toggle",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
@@ -1558,6 +1568,7 @@ h1 {
       var accuracy = position.coords.accuracy;
       var center = [lat, lng];
       var shouldFollow = Boolean(options && options.follow);
+      var showAccuracy = !(options && options.showAccuracy === false);
 
       if (userMarker) userMarker.remove();
       if (userAccuracyCircle) userAccuracyCircle.remove();
@@ -1570,7 +1581,7 @@ h1 {
         fillOpacity: 1
       }).addTo(map);
 
-      if (Number.isFinite(accuracy)) {
+      if (showAccuracy && Number.isFinite(accuracy)) {
         userAccuracyCircle = window.L.circle(center, {
           radius: accuracy,
           color: "#dc2626",
@@ -1951,6 +1962,7 @@ h1 {
       var lng = position.coords.longitude;
       var accuracy = position.coords.accuracy;
       var shouldFollow = Boolean(options && options.follow);
+      var showAccuracy = !(options && options.showAccuracy === false);
 
       if (userMarker) userMarker.setMap(null);
       if (userAccuracyCircle) userAccuracyCircle.setMap(null);
@@ -1958,7 +1970,7 @@ h1 {
       userMarker = makePointMarker(lat, lng, "user");
       userMarker.setMap(map);
 
-      if (Number.isFinite(accuracy)) {
+      if (showAccuracy && Number.isFinite(accuracy)) {
         userAccuracyCircle = new window.kakao.maps.Circle({
           center: toLatLng(lat, lng),
           radius: accuracy,
@@ -2167,6 +2179,7 @@ h1 {
 
   function bindEvents() {
     byId("searchInput").addEventListener("input", handleSearch);
+    byId("searchToggleButton").addEventListener("click", toggleSearchPanel);
     byId("districtSelect").addEventListener("change", function (event) {
       setDistrictFilter(event.target.value);
     });
@@ -2185,6 +2198,32 @@ h1 {
         window.Suneum.map.showRadius(state.selectedPlace, button.dataset.radius);
       });
     });
+  }
+
+  function toggleSearchPanel() {
+    var panel = byId("searchPanel");
+    setSearchPanelOpen(panel.classList.contains("hidden"));
+  }
+
+  function setSearchPanelOpen(isOpen) {
+    var panel = byId("searchPanel");
+    var button = byId("searchToggleButton");
+    var input = byId("searchInput");
+    var results = byId("searchResults");
+
+    panel.classList.toggle("hidden", !isOpen);
+    button.textContent = isOpen ? "×" : "⌕";
+    button.setAttribute("aria-expanded", String(isOpen));
+    button.setAttribute("aria-label", isOpen ? "투표소 검색 닫기" : "투표소 검색 열기");
+
+    if (isOpen) {
+      window.setTimeout(function () { input.focus(); }, 0);
+      return;
+    }
+
+    input.value = "";
+    results.innerHTML = "";
+    results.classList.add("hidden");
   }
 
   function applyRows(rows, sourceLabel) {
@@ -2311,7 +2350,7 @@ h1 {
     }
 
     initialLocationApplied = true;
-    window.Suneum.map.focusUserLocation(state.userPosition);
+    window.Suneum.map.setUserLocation(state.userPosition, { follow: true, showAccuracy: false });
   }
 
   function getVisiblePlaces() {
@@ -2349,6 +2388,7 @@ h1 {
         var place = findPlace(button.dataset.placeId);
         selectPlace(place, true);
         results.classList.add("hidden");
+        setSearchPanelOpen(false);
       });
     });
     results.classList.remove("hidden");
@@ -2423,7 +2463,7 @@ h1 {
     navigator.geolocation.getCurrentPosition(
       function (position) {
         state.userPosition = position;
-        window.Suneum.map.focusUserLocation(position);
+        window.Suneum.map.setUserLocation(position, { follow: true, showAccuracy: false });
         window.Suneum.map.showMapNotice("현재 위치 주변으로 지도를 이동했습니다.");
       },
       function (error) {
