@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 현장용 지도 v0.7.0</title>
+    <title>선이음-오십보백보 현장용 지도 v0.8.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -621,7 +621,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.7.0-field-map",
+    version: "0.8.0-data-file",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
@@ -640,6 +640,7 @@ h1 {
       selectedLevel: 2
     },
     defaultMapStyle: "osm",
+    dataUrl: "data/polling-places.json",
     mapStyles: {
       osm: {
         label: "기본 OSM 지도",
@@ -1929,8 +1930,7 @@ h1 {
     });
   }
 
-  function loadEmbeddedData() {
-    var rows = window.Suneum.embeddedRows || [];
+  function applyRows(rows) {
     if (!rows.length) {
       window.Suneum.map.showMapNotice("내장 투표소 자료를 찾지 못했습니다. 배포 파일을 확인하세요.");
       return;
@@ -1940,6 +1940,31 @@ h1 {
       startingRowNumber: 2
     });
     applyDataset(result);
+  }
+
+  function loadEmbeddedData() {
+    var fallbackRows = window.Suneum.embeddedRows || [];
+    var dataUrl = (window.Suneum.config && window.Suneum.config.dataUrl) || "data/polling-places.json";
+
+    if (!window.fetch) {
+      applyRows(fallbackRows);
+      return;
+    }
+
+    window.fetch(dataUrl + "?v=" + encodeURIComponent(window.Suneum.config.version), {
+      cache: "no-store"
+    })
+      .then(function (response) {
+        if (!response.ok) throw new Error("데이터 파일을 불러오지 못했습니다.");
+        return response.json();
+      })
+      .then(function (rows) {
+        if (!Array.isArray(rows) || !rows.length) throw new Error("데이터 파일이 비어 있습니다.");
+        applyRows(rows);
+      })
+      .catch(function () {
+        applyRows(fallbackRows);
+      });
   }
 
   function applyDataset(result) {
