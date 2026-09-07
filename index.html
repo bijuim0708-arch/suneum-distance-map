@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>선이음-오십보백보 현장용 지도 v0.13.0</title>
+    <title>선이음-오십보백보 현장용 지도 v0.14.0</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
     <style>
 :root {
@@ -110,6 +110,13 @@ h1 {
   border: 1px solid #cbd5e1;
 }
 
+.title-row .type-select {
+  min-width: 96px;
+  height: 34px;
+  padding-right: 22px;
+  font-size: 13px;
+}
+
 @media (max-width: 360px) {
   h1 {
     font-size: 18px;
@@ -124,6 +131,12 @@ h1 {
 
   .type-select {
     min-width: 104px;
+  }
+
+  .title-row .type-select {
+    min-width: 88px;
+    padding-right: 18px;
+    font-size: 12px;
   }
 }
 
@@ -617,7 +630,7 @@ h1 {
           <div class="title-row">
             <h1>선이음-오십보백보</h1>
             <select id="districtSelect" class="district-select" aria-label="구군 선택">
-              <option value="전체">전체</option>
+              <option value="전체">전 지역</option>
               <option value="중구">중구</option>
               <option value="동구">동구</option>
               <option value="서구">서구</option>
@@ -627,6 +640,11 @@ h1 {
               <option value="달서구">달서구</option>
               <option value="달성군">달성군</option>
               <option value="군위군">군위군</option>
+            </select>
+            <select id="typeSelect" class="type-select" aria-label="표시 유형">
+              <option value="전체">모든 선거</option>
+              <option value="사전투표소">사전투표소</option>
+              <option value="선거일 투표소">선거일 투표소</option>
             </select>
           </div>
         </div>
@@ -645,12 +663,6 @@ h1 {
           <div id="searchResults" class="search-results hidden"></div>
         </div>
         <div class="filter-row">
-          <span class="filter-label">표시 유형</span>
-          <select id="typeSelect" class="type-select" aria-label="투표소 유형 선택">
-            <option value="전체">전체</option>
-            <option value="사전투표소">사전투표소</option>
-            <option value="선거일 투표소">선거일 투표소</option>
-          </select>
           <span id="dataStatus" class="data-status">자료 기준일 확인 중...</span>
           <button id="refreshDataButton" class="refresh-data-button" type="button">자료 새로고침</button>
         </div>
@@ -716,7 +728,7 @@ h1 {
 
   window.Suneum.config = {
     appName: "선이음-오십보백보",
-    version: "0.13.0-location-pan",
+    version: "0.14.0-title-filters",
     defaultCenter: [35.885, 128.61],
     defaultZoom: 13,
     selectedZoom: 18,
