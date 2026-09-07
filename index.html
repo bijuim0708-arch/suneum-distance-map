@@ -533,6 +533,14 @@ h1 {
   background: var(--red);
 }
 
+.marker-pin.combined {
+  width: 46px;
+  height: 30px;
+  background: linear-gradient(90deg, var(--blue) 0 50%, var(--green) 50% 100%);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
 .point-marker {
   width: 18px;
   height: 18px;
@@ -1414,14 +1422,14 @@ h1 {
       activeTileLayer.addTo(map);
     }
 
-    function makeIcon(place, offsetX) {
-      var markerType = place.hasValidCoordinates ? place.type : "error";
-      var label = markerType === "early" ? "사" : markerType === "election" ? "투" : "!";
+    function makeIcon(place, offsetX, combined) {
+      var markerType = combined ? "combined" : place.hasValidCoordinates ? place.type : "error";
+      var label = combined ? "사+투" : markerType === "early" ? "사" : markerType === "election" ? "투" : "!";
       return window.L.divIcon({
         className: "",
         html: '<div class="marker-pin ' + markerType + '">' + label + "</div>",
-        iconSize: [28, 28],
-        iconAnchor: [14 - (offsetX || 0), 14]
+        iconSize: combined ? [46, 30] : [28, 28],
+        iconAnchor: combined ? [23, 15] : [14 - (offsetX || 0), 14]
       });
     }
 
@@ -1443,6 +1451,11 @@ h1 {
       var hasElection = group.some(function (item) { return item.type === "election"; });
       if (!hasEarly || !hasElection) return 0;
       return place.type === "early" ? -16 : 16;
+    }
+
+    function isMixedGroup(group) {
+      return group.some(function (item) { return item.type === "early"; }) &&
+        group.some(function (item) { return item.type === "election"; });
     }
 
     function setEngineFilters(filters) {
@@ -1476,9 +1489,28 @@ h1 {
 
       var bounds = [];
       var coordinateGroups = buildCoordinateGroups();
+      var renderedGroups = {};
       enginePlaces.forEach(function (place) {
         if (!place.hasValidCoordinates) return;
         if (!placeMatchesFilters(place)) return;
+
+        var key = String(place.lat) + "|" + String(place.lng);
+        var group = coordinateGroups[key] || [];
+        if (isMixedGroup(group)) {
+          if (renderedGroups[key]) return;
+          renderedGroups[key] = true;
+          var representative = group.find(function (item) { return item.type === "early"; }) || group[0];
+          var combinedMarker = window.L.marker([place.lat, place.lng], {
+            icon: makeIcon(representative, 0, true),
+            title: group.map(function (item) { return item.name; }).filter(Boolean).join(" / ")
+          });
+          combinedMarker.on("click", function () {
+            window.Suneum.app.selectPlace(representative, true);
+          });
+          combinedMarker.addTo(markerLayer);
+          bounds.push([place.lat, place.lng]);
+          return;
+        }
 
         var marker = window.L.marker([place.lat, place.lng], {
           icon: makeIcon(place, markerOffset(place, coordinateGroups)),
@@ -1762,11 +1794,11 @@ h1 {
       return place.type === "early" ? "early" : "election";
     }
 
-    function makePlaceMarker(place, offsetX) {
+    function makePlaceMarker(place, offsetX, combined) {
       var button = document.createElement("button");
       button.type = "button";
-      button.className = "marker-pin " + markerClass(place);
-      button.textContent = markerLabel(place);
+      button.className = "marker-pin " + (combined ? "combined" : markerClass(place));
+      button.textContent = combined ? "사+투" : markerLabel(place);
       if (offsetX) button.style.transform = "translateX(" + offsetX + "px)";
       button.setAttribute("aria-label", place.name || "투표소");
       button.addEventListener("click", function (event) {
@@ -1804,6 +1836,11 @@ h1 {
       return place.type === "early" ? -16 : 16;
     }
 
+    function isMixedGroup(group) {
+      return group.some(function (item) { return item.type === "early"; }) &&
+        group.some(function (item) { return item.type === "election"; });
+    }
+
     function setEnginePlaces(nextPlaces, filters) {
       enginePlaces = nextPlaces || [];
       setEngineFilters(filters);
@@ -1824,12 +1861,27 @@ h1 {
       var bounds = new window.kakao.maps.LatLngBounds();
       var count = 0;
       var coordinateGroups = buildCoordinateGroups();
+      var renderedGroups = {};
 
       enginePlaces.forEach(function (place) {
         if (!place.hasValidCoordinates) return;
         if (!placeMatchesFilters(place)) return;
 
-        var marker = makePlaceMarker(place, markerOffset(place, coordinateGroups));
+        var key = String(place.lat) + "|" + String(place.lng);
+        var group = coordinateGroups[key] || [];
+        if (isMixedGroup(group)) {
+          if (renderedGroups[key]) return;
+          renderedGroups[key] = true;
+          var representative = group.find(function (item) { return item.type === "early"; }) || group[0];
+          var combinedMarker = makePlaceMarker(representative, 0, true);
+          combinedMarker.setMap(map);
+          markers.push(combinedMarker);
+          bounds.extend(toLatLng(place.lat, place.lng));
+          count += 1;
+          return;
+        }
+
+        var marker = makePlaceMarker(place, markerOffset(place, coordinateGroups), false);
         marker.setMap(map);
         markers.push(marker);
         bounds.extend(toLatLng(place.lat, place.lng));
